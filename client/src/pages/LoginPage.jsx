@@ -104,11 +104,6 @@ export default function LoginPage() {
             {loading ? 'Signing in...' : 'Sign In'}
           </button>
         </form>
-
-        {/* Hint */}
-        <div className="mt-6 pt-6 border-t border-gray-800">
-          <p className="text-xs text-gray-600 text-center">Default: owner/owner123 · admin/admin123</p>
-        </div>
       </div>
 
       <p className="text-gray-700 text-xs mt-8">Local system — no internet required</p>

@@ -3,6 +3,18 @@ const router = express.Router();
 const db = require('../db');
 const bcrypt = require('bcryptjs');
 
+// Helper function to get current date in Philippines timezone (UTC+8)
+function getPhilippinesDate() {
+  return new Date().toLocaleString('en-CA', { timeZone: 'Asia/Manila', year: 'numeric', month: '2-digit', day: '2-digit' }).split(',')[0];
+}
+
+// Helper function to get current ISO string in Philippines timezone
+function getPhilippinesISOString() {
+  const now = new Date();
+  const phTime = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Manila' }));
+  return phTime.toISOString();
+}
+
 // POST /api/sales — record a completed sale and deduct stock
 router.post('/', (req, res) => {
   const { table_number, start_time, end_time, table_cost, food_items, set_hours, received } = req.body;
@@ -10,7 +22,7 @@ router.post('/', (req, res) => {
 
   const foodTotal = food_items ? food_items.reduce((sum, item) => sum + item.price * item.quantity, 0) : 0;
   const total = (parseFloat(table_cost) || 0) + foodTotal;
-  const today = new Date().toISOString().split('T')[0];
+  const today = getPhilippinesDate();
 
   // Insert sale record
   const saleResult = db.prepare(`
@@ -19,7 +31,7 @@ router.post('/', (req, res) => {
   `).run(
     table_number || null,
     start_time || null,
-    end_time || new Date().toISOString(),
+    end_time || getPhilippinesISOString(),
     parseFloat(table_cost) || 0,
     foodTotal,
     total,
@@ -52,12 +64,13 @@ router.post('/', (req, res) => {
   res.status(201).json({ ...sale, items });
 });
 
-// GET /api/sales/today — all sales for today
+// GET /api/sales/today — all sales for a specific date (defaults to today)
 router.get('/today', (req, res) => {
-  const today = new Date().toISOString().split('T')[0];
+  const { date } = req.query;
+  const targetDate = date || getPhilippinesDate();
   const sales = db.prepare(`
     SELECT * FROM sales WHERE date = ? ORDER BY id DESC
-  `).all(today);
+  `).all(targetDate);
 
   const result = sales.map(s => ({
     ...s,

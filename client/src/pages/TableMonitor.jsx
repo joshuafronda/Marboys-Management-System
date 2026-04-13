@@ -60,6 +60,7 @@ export default function TableMonitor() {
   const [localElapsed, setLocalElapsed] = useState(0);
   const [flavorModal, setFlavorModal] = useState(null); // food object for flavor selector
   const [errorModal, setErrorModal] = useState(''); // error message for styled modal
+  const [shortfallModal, setShortfallModal] = useState(null); // { total, received, shortfall }
   const [foodSearch, setFoodSearch] = useState(''); // search term for food menu
   const [foodCategoryFilter, setFoodCategoryFilter] = useState('All'); // category filter for food menu
 
@@ -213,8 +214,11 @@ export default function TableMonitor() {
   };
 
   const handleExhibitionPayment = async () => {
-    if (!received || parseFloat(received) < parseFloat(payModal.cost)) {
-      setErrorModal('Amount received is not enough.');
+    const receivedAmt = parseFloat(received) || 0;
+    const totalAmt = parseFloat(payModal.cost) || 0;
+    if (!received || receivedAmt < totalAmt) {
+      const shortfall = totalAmt - receivedAmt;
+      setShortfallModal({ total: totalAmt, received: receivedAmt, shortfall });
       return;
     }
     
@@ -355,8 +359,10 @@ export default function TableMonitor() {
   const change = parseFloat(received || 0) - grandTotal;
 
   const handlePayment = async () => {
-    if (!received || parseFloat(received) < grandTotal) {
-      setErrorModal('Amount received is not enough.');
+    const receivedAmt = parseFloat(received) || 0;
+    if (!received || receivedAmt < grandTotal) {
+      const shortfall = grandTotal - receivedAmt;
+      setShortfallModal({ total: grandTotal, received: receivedAmt, shortfall });
       return;
     }
     setPaying(true);
@@ -1014,7 +1020,6 @@ export default function TableMonitor() {
                 placeholder="0.00"
                 value={received}
                 onChange={e => setReceived(e.target.value)}
-                min={grandTotal}
               />
               {received && parseFloat(received) >= grandTotal && (
                 <p className="text-sm text-gray-400 mt-2">Change: <span className="text-white font-bold">₱{change.toFixed(2)}</span></p>
@@ -1025,7 +1030,7 @@ export default function TableMonitor() {
               id="confirm-payment-btn"
               className="btn-primary w-full py-3 text-base"
               onClick={payModal.isExhibition ? handleExhibitionPayment : handlePayment}
-              disabled={paying || !received || parseFloat(received) < grandTotal}
+              disabled={paying || !received}
             >
               {paying ? 'Processing...' : (payModal.isExhibition ? 'Pay & Reset Table' : 'Confirm Payment')}
             </button>
@@ -1191,6 +1196,46 @@ export default function TableMonitor() {
             <p className="text-gray-400 text-sm mb-6">{errorModal}</p>
             <button
               onClick={() => setErrorModal('')}
+              className="btn-primary w-full py-2"
+            >
+              OK
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Shortfall / Balance Due Modal */}
+      {shortfallModal && (
+        <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-[80] p-4">
+          <div className="card w-full max-w-sm p-6">
+            <div className="w-14 h-14 mx-auto mb-4 rounded-full bg-amber-500/20 flex items-center justify-center">
+              <svg className="w-8 h-8 text-amber-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+              </svg>
+            </div>
+            <h2 className="text-lg font-black text-white mb-4 text-center">Outstanding Balance</h2>
+            
+            <div className="space-y-3 mb-6">
+              <div className="flex justify-between items-center py-2 border-b border-gray-800">
+                <span className="text-gray-400 text-sm">Total Amount Due</span>
+                <span className="text-white font-bold">₱{shortfallModal.total.toFixed(2)}</span>
+              </div>
+              <div className="flex justify-between items-center py-2 border-b border-gray-800">
+                <span className="text-gray-400 text-sm">Amount Received</span>
+                <span className="text-white font-bold">₱{shortfallModal.received.toFixed(2)}</span>
+              </div>
+              <div className="flex justify-between items-center py-2 bg-amber-500/10 rounded px-3">
+                <span className="text-amber-400 font-semibold text-sm">Remaining Balance</span>
+                <span className="text-amber-400 font-black text-lg">₱{shortfallModal.shortfall.toFixed(2)}</span>
+              </div>
+            </div>
+            
+            <p className="text-gray-500 text-xs text-center mb-4">
+              Please collect the remaining balance before completing payment.
+            </p>
+            
+            <button
+              onClick={() => setShortfallModal(null)}
               className="btn-primary w-full py-2"
             >
               OK

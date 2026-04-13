@@ -13,22 +13,24 @@ router.get('/', (req, res) => {
     if (flavors && flavors.length > 0) {
       // Calculate stock per flavor
       const flavorStocks = flavors.map(flavor => {
+        const flavorName = flavor.flavor_name || flavor.name;
+        const initialStock = parseInt(flavor.stock) || 0;
         const addedStock = db.prepare(`
           SELECT COALESCE(SUM(added_stock), 0) as total
           FROM daily_stock_inventory
-          WHERE food_id = ? AND flavor_name = ?
-        `).get(f.id, flavor.name)?.total || 0;
+          WHERE food_id = ? AND LOWER(flavor_name) LIKE LOWER(?)
+        `).get(f.id, `%${flavorName}%`)?.total || 0;
 
         const soldStock = db.prepare(`
           SELECT COALESCE(SUM(quantity), 0) as total
           FROM sale_items si
           JOIN sales s ON si.sale_id = s.id
-          WHERE si.food_id = ? AND si.flavor_name = ?
-        `).get(f.id, flavor.name)?.total || 0;
+          WHERE si.food_id = ? AND LOWER(si.flavor_name) LIKE LOWER(?)
+        `).get(f.id, `%${flavorName}%`)?.total || 0;
 
         return {
           ...flavor,
-          available: Math.max(0, addedStock - soldStock),
+          available: Math.max(0, initialStock + addedStock - soldStock),
           added: addedStock,
           sold: soldStock
         };
@@ -42,18 +44,18 @@ router.get('/', (req, res) => {
         stock: availableStock
       };
     } else {
-      // Calculate stock for food without flavors
+      // Calculate stock for food without flavors (flavor_name IS NULL or empty string)
       const addedStock = db.prepare(`
         SELECT COALESCE(SUM(added_stock), 0) as total
         FROM daily_stock_inventory
-        WHERE food_id = ? AND flavor_name IS NULL
+        WHERE food_id = ? AND (flavor_name IS NULL OR flavor_name = '')
       `).get(f.id)?.total || 0;
 
       const soldStock = db.prepare(`
         SELECT COALESCE(SUM(quantity), 0) as total
         FROM sale_items si
         JOIN sales s ON si.sale_id = s.id
-        WHERE si.food_id = ? AND si.flavor_name IS NULL
+        WHERE si.food_id = ? AND (si.flavor_name IS NULL OR si.flavor_name = '')
       `).get(f.id)?.total || 0;
 
       availableStock = Math.max(0, addedStock - soldStock);
@@ -164,8 +166,27 @@ router.delete('/:id', (req, res) => {
   const food = db.prepare('SELECT * FROM foods WHERE id = ?').get(req.params.id);
   if (!food) return res.status(404).json({ error: 'Food not found' });
 
-  db.prepare('DELETE FROM foods WHERE id = ?').run(food.id);
-  res.json({ message: 'Food item deleted' });
+  try {
+    // Check for related records before deleting
+    const dailyStockCount = db.prepare('SELECT COUNT(*) as count FROM daily_stock_inventory WHERE food_id = ?').get(food.id)?.count || 0;
+    const saleItemsCount = db.prepare('SELECT COUNT(*) as count FROM sale_items WHERE food_id = ?').get(food.id)?.count || 0;
+
+    if (dailyStockCount > 0 || saleItemsCount > 0) {
+      return res.status(400).json({ 
+        error: 'Cannot delete food item with existing stock records or sales history',
+        details: {
+          dailyStockRecords: dailyStockCount,
+          saleItems: saleItemsCount
+        }
+      });
+    }
+
+    db.prepare('DELETE FROM foods WHERE id = ?').run(food.id);
+    res.json({ message: 'Food item deleted' });
+  } catch (err) {
+    console.error('Error deleting food:', err);
+    res.status(500).json({ error: 'Failed to delete food item', details: err.message });
+  }
 });
 
 module.exports = router;

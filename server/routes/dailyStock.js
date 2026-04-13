@@ -57,7 +57,7 @@ router.get('/:id', (req, res) => {
 });
 
 // GET /api/daily-stock/available/:foodId - Get available stock for a food item
-// Available = Total Added Stock - Total Sold Stock
+// Available = Initial Stock + Total Added Stock - Total Sold Stock
 router.get('/available/:foodId', (req, res) => {
   try {
     const { foodId } = req.params;
@@ -65,39 +65,59 @@ router.get('/available/:foodId', (req, res) => {
 
     let addedStock = 0;
     let soldStock = 0;
+    let initialStock = 0;
+
+    // Get food item to check for flavors
+    const food = db.prepare('SELECT * FROM foods WHERE id = ?').get(foodId);
+    if (!food) return res.status(404).json({ error: 'Food not found' });
 
     if (flavor_name) {
       // Calculate for specific flavor
       addedStock = db.prepare(`
         SELECT COALESCE(SUM(added_stock), 0) as total
         FROM daily_stock_inventory
-        WHERE food_id = ? AND flavor_name = ?
-      `).get(foodId, flavor_name)?.total || 0;
+        WHERE food_id = ? AND LOWER(flavor_name) LIKE LOWER(?)
+      `).get(foodId, `%${flavor_name}%`)?.total || 0;
 
       soldStock = db.prepare(`
         SELECT COALESCE(SUM(quantity), 0) as total
         FROM sale_items si
         JOIN sales s ON si.sale_id = s.id
-        WHERE si.food_id = ? AND si.flavor_name = ?
-      `).get(foodId, flavor_name)?.total || 0;
+        WHERE si.food_id = ? AND LOWER(si.flavor_name) LIKE LOWER(?)
+      `).get(foodId, `%${flavor_name}%`)?.total || 0;
+
+      // Get initial stock from flavors array
+      if (food.flavors) {
+        const flavors = JSON.parse(food.flavors);
+        const flavor = flavors.find(f => 
+          (f.flavor_name || f.name).toLowerCase().includes(flavor_name.toLowerCase()) ||
+          flavor_name.toLowerCase().includes((f.flavor_name || f.name).toLowerCase())
+        );
+        if (flavor) {
+          initialStock = parseInt(flavor.stock) || 0;
+        }
+      }
     } else {
       // Calculate for food item (no flavors)
       addedStock = db.prepare(`
         SELECT COALESCE(SUM(added_stock), 0) as total
         FROM daily_stock_inventory
-        WHERE food_id = ? AND flavor_name IS NULL
+        WHERE food_id = ? AND (flavor_name IS NULL OR flavor_name = '')
       `).get(foodId)?.total || 0;
 
       soldStock = db.prepare(`
         SELECT COALESCE(SUM(quantity), 0) as total
         FROM sale_items si
         JOIN sales s ON si.sale_id = s.id
-        WHERE si.food_id = ? AND si.flavor_name IS NULL
+        WHERE si.food_id = ? AND (si.flavor_name IS NULL OR si.flavor_name = '')
       `).get(foodId)?.total || 0;
+
+      // For non-flavored items, use the stock column as initial stock
+      initialStock = parseInt(food.stock) || 0;
     }
 
-    const available = addedStock - soldStock;
-    res.json({ available: Math.max(0, available), added: addedStock, sold: soldStock });
+    const available = initialStock + addedStock - soldStock;
+    res.json({ available: Math.max(0, available), added: addedStock, sold: soldStock, initial: initialStock });
   } catch (err) {
     console.error('Error calculating available stock:', err);
     res.status(500).json({ error: 'Failed to calculate available stock' });

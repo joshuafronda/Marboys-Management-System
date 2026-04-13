@@ -29,6 +29,11 @@ ChartJS.register(
   Filler
 );
 
+// Helper to get current date in Philippines timezone (UTC+8)
+function getPhilippinesDate() {
+  return new Date().toLocaleString('en-CA', { timeZone: 'Asia/Manila', year: 'numeric', month: '2-digit', day: '2-digit' }).split(',')[0];
+}
+
 function StatCard({ label, value, sub, icon: Icon }) {
   return (
     <div className="card p-6">
@@ -52,14 +57,18 @@ export default function OwnerDashboard() {
   const [chartRange, setChartRange] = useState('week');
   const [expandedSale, setExpandedSale] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [dateFilter, setDateFilter] = useState(getPhilippinesDate()); // empty string = all time
+  const todayStr = getPhilippinesDate();
 
   const h = { headers: { Authorization: `Bearer ${token}` } };
 
   useEffect(() => {
     const fetchAll = async () => {
       try {
+        const params = new URLSearchParams({ limit: 100 });
+        if (dateFilter) params.append('date', dateFilter);
         const [todayRes, monthRes, bestRes, foodsRes, chartRes] = await Promise.all([
-          axios.get('/api/sales/today', h),
+          axios.get(`/api/sales/all?${params}`, h),
           axios.get('/api/sales/month', h),
           axios.get('/api/sales/best-selling', h),
           axios.get('/api/foods', h),
@@ -77,7 +86,7 @@ export default function OwnerDashboard() {
       }
     };
     fetchAll();
-  }, [chartRange]);
+  }, [chartRange, dateFilter]);
 
   // Calculate separate food and drink totals
   const drinkCategories = ['Beverages', 'Coffee & Tea', 'Beers', 'Beer Buckets (6 Bottles + Pulutan)', 'Liquors', 'Wines & Spirits', 'Marboys Batangas Cocktails'];
@@ -102,7 +111,9 @@ export default function OwnerDashboard() {
   
   const todayTableSales = todaySales.reduce((s, sale) => s + parseFloat(sale.table_cost || 0), 0);
   const todayTotal = todayTableSales + todayFoodSales + todayDrinkSales;
-  const today = new Date().toLocaleDateString('en-PH', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+  const formattedDate = dateFilter 
+    ? new Date(dateFilter).toLocaleDateString('en-PH', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })
+    : 'All Time';
 
   const downloadTodaySales = () => {
     const doc = new jsPDF();
@@ -110,11 +121,11 @@ export default function OwnerDashboard() {
     // Header
     doc.setFontSize(18);
     doc.setFont('helvetica', 'bold');
-    doc.text('MARBOYS - Today\'s Transactions Report', 14, 20);
+    doc.text('MARBOYS - Transactions Report', 14, 20);
 
     doc.setFontSize(10);
     doc.setFont('helvetica', 'normal');
-    doc.text(`Date: ${today}`, 14, 28);
+    doc.text(`Date: ${formattedDate}`, 14, 28);
     doc.text(`Total Sales: ${todayTotal.toLocaleString('en-PH', { minimumFractionDigits: 2 })} PHP`, 14, 34);
     doc.text(`Transactions: ${todaySales.length}`, 14, 40);
 
@@ -172,7 +183,7 @@ export default function OwnerDashboard() {
       },
     });
 
-    doc.save(`marboys-transactions-${new Date().toISOString().split('T')[0]}.pdf`);
+    doc.save(`marboys-owner-transactions-${dateFilter || 'all'}.pdf`);
   };
 
   return (
@@ -181,7 +192,7 @@ export default function OwnerDashboard() {
         {/* Header */}
         <div className="mb-8">
           <h1 className="text-2xl font-black text-white">Owner Dashboard</h1>
-          <p className="text-gray-500 text-sm mt-1">{today}</p>
+          <p className="text-gray-500 text-sm mt-1">{formattedDate}</p>
         </div>
 
         {loading ? (
@@ -373,7 +384,33 @@ export default function OwnerDashboard() {
             {/* Detailed Transactions - Owner gets full breakdown */}
             <div className="card p-6">
               <div className="flex items-center justify-between mb-4">
-                <h2 className="text-sm font-bold text-white uppercase tracking-wider">Today's Detailed Transactions</h2>
+                <div className="flex items-center gap-4">
+                  <h2 className="text-sm font-bold text-white uppercase tracking-wider">Detailed Transactions</h2>
+                  <div className="flex items-center gap-2 bg-gray-800 rounded-lg px-3 py-1.5 border border-gray-700">
+                    <Calendar className="w-4 h-4 text-gray-400" />
+                    <input
+                      type="date"
+                      value={dateFilter}
+                      onChange={(e) => setDateFilter(e.target.value)}
+                      className="bg-transparent text-white text-xs focus:outline-none"
+                    />
+                  </div>
+                  {/* Quick filter buttons */}
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => setDateFilter(todayStr)}
+                      className={`text-xs px-3 py-1.5 rounded-lg border transition-all ${dateFilter === todayStr ? 'bg-white text-black border-white' : 'border-gray-700 text-gray-400 hover:border-gray-500'}`}
+                    >
+                      Today
+                    </button>
+                    <button
+                      onClick={() => setDateFilter('')}
+                      className={`text-xs px-3 py-1.5 rounded-lg border transition-all ${!dateFilter ? 'bg-white text-black border-white' : 'border-gray-700 text-gray-400 hover:border-gray-500'}`}
+                    >
+                      All Time
+                    </button>
+                  </div>
+                </div>
                 {todaySales.length > 0 && (
                   <button
                     onClick={downloadTodaySales}
@@ -385,7 +422,7 @@ export default function OwnerDashboard() {
                 )}
               </div>
               {todaySales.length === 0 ? (
-                <p className="text-gray-600 text-sm">No transactions today.</p>
+                <p className="text-gray-600 text-sm">No transactions for selected date.</p>
               ) : (
                 <div className="overflow-x-auto">
                   <table className="w-full text-sm">

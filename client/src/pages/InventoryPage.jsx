@@ -229,6 +229,7 @@ export default function InventoryPage() {
   // Stock History Edit/Delete state
   const [showStockModal, setShowStockModal] = useState(false);
   const [editingStockRecord, setEditingStockRecord] = useState(null);
+  const [stockDeleteTarget, setStockDeleteTarget] = useState(null);
   const [stockFormData, setStockFormData] = useState({
     food_id: '',
     food_name: '',
@@ -365,6 +366,7 @@ export default function InventoryPage() {
       await axios.post('/api/daily-stock/batch', { records }, h);
       setSelectedItems([]);
       fetchStockRecords();
+      fetchFoods();
       setToast(`${records.length} stock records added successfully`);
       setTimeout(() => setToast(''), 2500);
     } catch (err) {
@@ -386,10 +388,11 @@ export default function InventoryPage() {
   };
 
   const handleStockDelete = async (id) => {
-    if (!confirm('Are you sure you want to delete this record?')) return;
     try {
       await axios.delete(`/api/daily-stock/${id}`, h);
+      setStockDeleteTarget(null);
       fetchStockRecords();
+      fetchFoods();
       setToast('Stock record deleted');
       setTimeout(() => setToast(''), 2500);
     } catch (err) {
@@ -411,6 +414,7 @@ export default function InventoryPage() {
       setShowStockModal(false);
       setEditingStockRecord(null);
       fetchStockRecords();
+      fetchFoods();
       setToast('Stock record updated');
       setTimeout(() => setToast(''), 2500);
     } catch (err) {
@@ -594,7 +598,7 @@ export default function InventoryPage() {
                       <td className="px-4 py-2.5 text-right">
                         {food.flavors && food.flavors.length > 0 ? (
                           <span className="text-gray-400 text-[10px]">
-                            {food.flavors.map(f => `${f.flavor_name}: ${f.stock}`).join(' / ')}
+                            {food.flavors.map(f => `${f.flavor_name}: ${f.available ?? f.stock}`).join(' / ')}
                           </span>
                         ) : (
                           <span className={food.stock <= 5 ? 'text-gray-400 font-bold' : 'text-gray-300'}>
@@ -607,12 +611,16 @@ export default function InventoryPage() {
                           onClick={() => toggleAvailability(food)}
                           title="Toggle availability"
                         >
-                          {food.stock <= 0
-                            ? <span className="badge-outofstock">Out of Stock</span>
-                            : food.status === 'available'
-                            ? <span className="badge-available">Available</span>
-                            : <span className="badge-paused">Disabled</span>
-                          }
+                          {(() => {
+                            const effectiveStock = food.flavors && food.flavors.length > 0
+                              ? food.flavors.reduce((sum, f) => sum + (f.available ?? f.stock ?? 0), 0)
+                              : food.stock;
+                            return effectiveStock <= 0
+                              ? <span className="badge-outofstock">Out of Stock</span>
+                              : food.status === 'available'
+                              ? <span className="badge-available">Available</span>
+                              : <span className="badge-paused">Disabled</span>;
+                          })()}
                         </button>
                       </td>
                       <td className="px-4 py-2.5 text-right">
@@ -773,7 +781,6 @@ export default function InventoryPage() {
                               className="bg-gray-800 border border-gray-700 text-white text-xs px-2 py-1.5 rounded focus:outline-none focus:border-white w-full text-left"
                               onClick={(e) => e.stopPropagation()}
                             >
-                              <option value="">No flavor</option>
                               {flavorsArray.map((flavor, idx) => (
                                 <option key={idx} value={flavor.flavor_name}>{flavor.flavor_name}</option>
                               ))}
@@ -906,7 +913,7 @@ export default function InventoryPage() {
                             Edit
                           </button>
                           <button
-                            onClick={() => handleStockDelete(record.id)}
+                            onClick={() => setStockDeleteTarget(record)}
                             className="text-gray-400 hover:text-red-400 text-xs"
                           >
                             Delete
@@ -961,6 +968,38 @@ export default function InventoryPage() {
           </button>
           <button
             onClick={() => handleDelete(deleteTarget.id)}
+            className="btn-primary flex-1 py-2"
+          >
+            Delete
+          </button>
+        </div>
+      </div>
+    </div>
+  )}
+
+  {/* Stock Delete Confirmation Modal */}
+  {stockDeleteTarget && (
+    <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
+      <div className="card w-full max-w-xs p-6 text-center">
+        <div className="w-14 h-14 mx-auto mb-3 rounded-full bg-white/10 flex items-center justify-center">
+          <svg className="w-8 h-8 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+          </svg>
+        </div>
+        <h2 className="text-lg font-black text-white mb-1">Delete Stock Record</h2>
+        <p className="text-sm text-gray-400 mb-6">
+          Are you sure you want to delete the record for <span className="text-white font-semibold">{stockDeleteTarget.food_name}</span>
+          {stockDeleteTarget.flavor_name && <span> ({stockDeleteTarget.flavor_name})</span>}?
+        </p>
+        <div className="flex gap-3">
+          <button
+            onClick={() => setStockDeleteTarget(null)}
+            className="btn-outline flex-1 py-2"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={() => handleStockDelete(stockDeleteTarget.id)}
             className="btn-primary flex-1 py-2"
           >
             Delete
