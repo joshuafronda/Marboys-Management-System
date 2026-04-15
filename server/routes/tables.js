@@ -172,12 +172,33 @@ router.post('/:id/exhibition', (req, res) => {
   const betAmount = parseFloat(req.body.bet_amount) || 0;
   if (betAmount <= 0) return res.status(400).json({ error: 'Bet amount must be greater than 0' });
 
-  db.prepare(`
-    UPDATE tables SET status = 'exhibition', exhibition_bet = ?, start_time = NULL, accumulated_seconds = 0
-    WHERE id = ?
-  `).run(betAmount, table.id);
+  const customFee = req.body.custom_fee ? parseFloat(req.body.custom_fee) : null;
 
-  res.json({ message: 'Exhibition match started', bet_amount: betAmount });
+  db.prepare(`
+    UPDATE tables SET status = 'exhibition', exhibition_bet = ?, exhibition_custom_fee = ?, start_time = NULL, accumulated_seconds = 0
+    WHERE id = ?
+  `).run(betAmount, customFee, table.id);
+
+  res.json({ message: 'Exhibition match started', bet_amount: betAmount, custom_fee: customFee });
+});
+
+// POST /api/tables/:id/exhibition-fee — update custom fee for running exhibition
+router.post('/:id/exhibition-fee', (req, res) => {
+  const table = db.prepare('SELECT * FROM tables WHERE id = ?').get(req.params.id);
+  if (!table) return res.status(404).json({ error: 'Table not found' });
+  if (table.status !== 'exhibition') return res.status(400).json({ error: 'Table must be in exhibition status to update fee' });
+
+  const customFee = parseFloat(req.body.custom_fee);
+  if (!customFee || customFee <= 0) {
+    return res.status(400).json({ error: 'Custom fee must be greater than 0' });
+  }
+
+  db.prepare(`
+    UPDATE tables SET exhibition_custom_fee = ?
+    WHERE id = ?
+  `).run(customFee, table.id);
+
+  res.json({ message: 'Custom fee updated', custom_fee: customFee });
 });
 
 // POST /api/tables/:id/reset — reset to available
@@ -186,7 +207,7 @@ router.post('/:id/reset', (req, res) => {
   if (!table) return res.status(404).json({ error: 'Table not found' });
 
   db.prepare(`
-    UPDATE tables SET status = 'available', start_time = NULL, pause_time = NULL, accumulated_seconds = 0, cart_items = '[]', set_hours = 0, exhibition_bet = 0
+    UPDATE tables SET status = 'available', start_time = NULL, pause_time = NULL, accumulated_seconds = 0, cart_items = '[]', set_hours = 0, exhibition_bet = 0, exhibition_custom_fee = NULL
     WHERE id = ?
   `).run(table.id);
 

@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import Layout from '../components/Layout';
 import axios from 'axios';
 import { useAuth } from '../context/AuthContext';
-import { Users, Clock, TrendingUp, Calendar, Coffee, UtensilsCrossed, Download } from 'lucide-react';
+import { Users, Clock, TrendingUp, Calendar, Coffee, UtensilsCrossed, Download, Eye, EyeOff } from 'lucide-react';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import {
@@ -58,6 +58,8 @@ export default function OwnerDashboard() {
   const [expandedSale, setExpandedSale] = useState(null);
   const [loading, setLoading] = useState(true);
   const [dateFilter, setDateFilter] = useState(getPhilippinesDate()); // empty string = all time
+  const [showMonthSales, setShowMonthSales] = useState(false);
+  const [showMonthSummary, setShowMonthSummary] = useState(false);
   const todayStr = getPhilippinesDate();
 
   const h = { headers: { Authorization: `Bearer ${token}` } };
@@ -142,7 +144,9 @@ export default function OwnerDashboard() {
       }, 0) || 0;
 
       return [
-        sale.end_time?.slice(11, 16) || '-',
+        sale.end_time
+          ? new Date(sale.end_time).toLocaleTimeString('en-PH', { hour: 'numeric', minute: '2-digit', hour12: true })
+          : '-',
         sale.table_number ? `Table ${sale.table_number}` : 'Walk-in',
         sale.table_cost > 0 ? sale.table_cost.toFixed(2) : '-',
         foodTotal > 0 ? foodTotal.toFixed(2) : '-',
@@ -155,7 +159,7 @@ export default function OwnerDashboard() {
     const totalFood = tableData.reduce((sum, row) => sum + (row[3] !== '-' ? parseFloat(row[3]) : 0), 0);
     const totalDrinks = tableData.reduce((sum, row) => sum + (row[4] !== '-' ? parseFloat(row[4]) : 0), 0);
     const totalTable = tableData.reduce((sum, row) => sum + (row[2] !== '-' ? parseFloat(row[2]) : 0), 0);
-    const grandTotal = tableData.reduce((sum, row) => sum + parseFloat(row[5] || 0), 0);
+    const grandTotal = totalTable + totalFood + totalDrinks;
 
     tableData.push([
       '',
@@ -225,12 +229,24 @@ export default function OwnerDashboard() {
                 sub="Beverages & drinks"
                 icon={Coffee}
               />
-              <StatCard
-                label="Sales This Month"
-                value={`₱${(monthData.totalRevenue || 0).toLocaleString('en-PH', { minimumFractionDigits: 2 })}`}
-                sub={`${monthData.count} transactions`}
-                icon={Calendar}
-              />
+              <div className="card p-6 relative">
+                <div className="flex items-center gap-2 mb-2">
+                  <Calendar className="w-4 h-4 text-gray-500" />
+                  <p className="text-xs text-gray-500 uppercase tracking-widest font-semibold">Sales This Month</p>
+                  <button
+                    onClick={() => setShowMonthSales(!showMonthSales)}
+                    className="ml-auto p-1 hover:bg-gray-800 rounded transition-colors"
+                  >
+                    {showMonthSales ? <EyeOff className="w-4 h-4 text-gray-500" /> : <Eye className="w-4 h-4 text-gray-500" />}
+                  </button>
+                </div>
+                <p className="text-3xl font-black text-white">
+                  {showMonthSales
+                    ? `₱${(monthData.totalRevenue || 0).toLocaleString('en-PH', { minimumFractionDigits: 2 })}`
+                    : '₱••••••'}
+                </p>
+                <p className="text-xs text-gray-600 mt-1">{monthData.count} transactions</p>
+              </div>
             </div>
 
             {/* Sales Trend Chart - Owner Analytics */}
@@ -353,12 +369,22 @@ export default function OwnerDashboard() {
 
               {/* Monthly Performance */}
               <div className="card p-6">
-                <h2 className="text-sm font-bold text-white uppercase tracking-wider mb-4">This Month Summary</h2>
+                <div className="flex items-center justify-between mb-4">
+                  <h2 className="text-sm font-bold text-white uppercase tracking-wider">This Month Summary</h2>
+                  <button
+                    onClick={() => setShowMonthSummary(!showMonthSummary)}
+                    className="p-1 hover:bg-gray-800 rounded transition-colors"
+                  >
+                    {showMonthSummary ? <EyeOff className="w-4 h-4 text-gray-500" /> : <Eye className="w-4 h-4 text-gray-500" />}
+                  </button>
+                </div>
                 <div className="space-y-4">
                   <div className="flex justify-between items-center py-3 border-b border-gray-900">
                     <span className="text-gray-400 text-sm">Total Revenue</span>
                     <span className="text-2xl font-black text-white">
-                      ₱{(monthData.totalRevenue || 0).toLocaleString('en-PH', { minimumFractionDigits: 2 })}
+                      {showMonthSummary
+                        ? `₱${(monthData.totalRevenue || 0).toLocaleString('en-PH', { minimumFractionDigits: 2 })}`
+                        : '₱••••••'}
                     </span>
                   </div>
                   <div className="flex justify-between items-center py-3 border-b border-gray-900">
@@ -368,13 +394,17 @@ export default function OwnerDashboard() {
                   <div className="flex justify-between items-center py-3 border-b border-gray-900">
                     <span className="text-gray-400 text-sm">Average Sale</span>
                     <span className="text-lg font-semibold text-white">
-                      ₱{monthData.count > 0 ? (monthData.totalRevenue / monthData.count).toFixed(2) : '0.00'}
+                      {showMonthSummary
+                        ? `₱${monthData.count > 0 ? (monthData.totalRevenue / monthData.count).toFixed(2) : '0.00'}`
+                        : '₱••••'}
                     </span>
                   </div>
                   <div className="flex justify-between items-center py-3">
                     <span className="text-gray-400 text-sm">Today's Contribution</span>
                     <span className="text-lg font-semibold text-accent">
-                      {monthData.totalRevenue > 0 ? ((todayTotal / monthData.totalRevenue) * 100).toFixed(1) : 0}%
+                      {showMonthSummary
+                        ? `${monthData.totalRevenue > 0 ? ((todayTotal / monthData.totalRevenue) * 100).toFixed(1) : 0}%`
+                        : '••%'}
                     </span>
                   </div>
                 </div>

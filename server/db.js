@@ -244,6 +244,15 @@ const migrateTablesExhibitionBet = () => {
   }
 };
 
+const migrateTablesExhibitionCustomFee = () => {
+  const columns = db.prepare("PRAGMA table_info(tables)").all();
+  const hasExhibitionCustomFee = columns.some(col => col.name === 'exhibition_custom_fee');
+  if (!hasExhibitionCustomFee) {
+    db.exec(`ALTER TABLE tables ADD COLUMN exhibition_custom_fee REAL DEFAULT NULL`);
+    console.log('✅ Migrated tables table: added exhibition_custom_fee column');
+  }
+};
+
 const migrateSalesSetHours = () => {
   const columns = db.prepare("PRAGMA table_info(sales)").all();
   const hasSetHours = columns.some(col => col.name === 'set_hours');
@@ -327,6 +336,7 @@ migrateTablesCartItems();
 migrateTablesSetHours();
 migrateTablesRemoveCheckConstraint();
 migrateTablesExhibitionBet();
+migrateTablesExhibitionCustomFee();
 migrateSalesSetHours();
 migrateSaleItemsVoided();
 createVoidLogsTable();

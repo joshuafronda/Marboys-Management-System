@@ -105,8 +105,6 @@ export default function LoginPage() {
           </button>
         </form>
       </div>
-
-      <p className="text-gray-700 text-xs mt-8">Local system — no internet required</p>
     </div>
   );
 }

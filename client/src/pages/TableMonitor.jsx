@@ -55,6 +55,10 @@ export default function TableMonitor() {
   const [payModal, setPayModal] = useState(null); // stopData for checkout
   const [extendHours, setExtendHours] = useState('');
   const [exhibitionBet, setExhibitionBet] = useState('');
+  const [exhibitionCustomFee, setExhibitionCustomFee] = useState('');
+  const [useCustomFee, setUseCustomFee] = useState(false);
+  const [editingRunningFee, setEditingRunningFee] = useState(false);
+  const [runningCustomFee, setRunningCustomFee] = useState('');
   const [alarms, setAlarms] = useState([]); // { tableId, tableNumber, cost, start_time, end_time }
   const [now, setNow] = useState(Date.now());
   const [localElapsed, setLocalElapsed] = useState(0);
@@ -185,12 +189,22 @@ export default function TableMonitor() {
       return;
     }
     
-    const tableFee = betAmount * 0.10;
+    // Use custom fee if provided and enabled, otherwise use 10% of bet
+    let tableFee;
+    if (useCustomFee && exhibitionCustomFee && parseFloat(exhibitionCustomFee) > 0) {
+      tableFee = parseFloat(exhibitionCustomFee);
+    } else {
+      tableFee = betAmount * 0.10;
+    }
     setBusy(true);
     
     try {
       // Set table to exhibition status
-      await axios.post(`/api/tables/${selectedTable.id}/exhibition`, { bet_amount: betAmount }, h);
+      const exhibitionPayload = { bet_amount: betAmount };
+      if (useCustomFee && exhibitionCustomFee && parseFloat(exhibitionCustomFee) > 0) {
+        exhibitionPayload.custom_fee = parseFloat(exhibitionCustomFee);
+      }
+      await axios.post(`/api/tables/${selectedTable.id}/exhibition`, exhibitionPayload, h);
       
       // Refresh table data
       const updated = await axios.get(`/api/tables/${selectedTable.id}`, h);
@@ -205,6 +219,7 @@ export default function TableMonitor() {
         end_time: new Date().toISOString(),
         isExhibition: true,
         betAmount: betAmount,
+        isCustomFee: useCustomFee && exhibitionCustomFee && parseFloat(exhibitionCustomFee) > 0,
       });
     } catch (err) {
       setErrorModal(err.response?.data?.error || 'Failed to start exhibition match');
@@ -267,6 +282,8 @@ export default function TableMonitor() {
       setSelectedTable(null);
       setPayModal(null);
       setExhibitionBet('');
+      setExhibitionCustomFee('');
+      setUseCustomFee(false);
       setTableCarts(prev => { const next = { ...prev }; delete next[selectedTable.id]; return next; });
       fetchTables();
     } catch (err) {
@@ -280,6 +297,8 @@ export default function TableMonitor() {
     setSelectedTable(table);
     setReceived('');
     setPayModal(null);
+    setEditingRunningFee(false);
+    setRunningCustomFee('');
   };
 
   // Compute available stock = db_stock - cart qty across ALL tables
@@ -624,13 +643,53 @@ export default function TableMonitor() {
                         
                         {exhibitionBet && parseFloat(exhibitionBet) > 0 && (
                           <div className="bg-gray-900 rounded-lg p-3 text-center">
-                            <p className="text-xs text-gray-500 uppercase tracking-wider">Table Fee (10%)</p>
+                            <p className="text-xs text-gray-500 uppercase tracking-wider">
+                              {useCustomFee ? 'Custom Table Fee' : 'Table Fee (10%)'}
+                            </p>
                             <p className="text-xl font-bold text-accent">
-                              ₱{(parseFloat(exhibitionBet) * 0.10).toLocaleString('en-PH', { minimumFractionDigits: 2 })}
+                              ₱{(useCustomFee && exhibitionCustomFee
+                                ? parseFloat(exhibitionCustomFee)
+                                : parseFloat(exhibitionBet) * 0.10
+                              ).toLocaleString('en-PH', { minimumFractionDigits: 2 })}
                             </p>
                             <p className="text-xs text-gray-600 mt-1">
                               Bet: ₱{parseFloat(exhibitionBet).toLocaleString('en-PH')}
                             </p>
+                          </div>
+                        )}
+
+                        {/* Custom Fee Toggle */}
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="checkbox"
+                            id="customFee"
+                            checked={useCustomFee}
+                            onChange={e => setUseCustomFee(e.target.checked)}
+                            className="w-4 h-4 rounded border-gray-600 bg-gray-800 text-accent focus:ring-accent"
+                          />
+                          <label htmlFor="customFee" className="text-sm text-gray-400 cursor-pointer">
+                            Use custom table fee
+                          </label>
+                        </div>
+
+                        {/* Custom Fee Input */}
+                        {useCustomFee && (
+                          <div>
+                            <label className="block text-xs text-gray-500 uppercase tracking-wider font-semibold mb-1">
+                              Custom Fee Amount
+                            </label>
+                            <div className="flex items-center gap-2">
+                              <span className="text-gray-500">₱</span>
+                              <input
+                                type="number"
+                                className="input flex-1"
+                                placeholder="e.g. 1500"
+                                value={exhibitionCustomFee}
+                                onChange={e => setExhibitionCustomFee(e.target.value)}
+                                min="0"
+                                step="100"
+                              />
+                            </div>
                           </div>
                         )}
                         
@@ -889,21 +948,92 @@ export default function TableMonitor() {
                   <div className="text-gray-500 text-xs mt-1">Bet Amount</div>
                   <div className="border-t border-gray-300 mt-3 pt-3">
                     <div className="flex justify-between items-center">
-                      <span className="text-gray-600 text-sm">Table Fee (10%)</span>
-                      <span className="text-black font-bold">₱{(selectedTable.exhibition_bet * 0.10 || 0).toFixed(2)}</span>
+                      <span className="text-gray-600 text-sm">
+                        {selectedTable.exhibition_custom_fee ? 'Custom Table Fee' : 'Table Fee (10%)'}
+                      </span>
+                      <span className="text-black font-bold">
+                        ₱{(selectedTable.exhibition_custom_fee || selectedTable.exhibition_bet * 0.10 || 0).toFixed(2)}
+                      </span>
                     </div>
                   </div>
                 </div>
+
+                {/* Edit Custom Fee Section */}
+                {!editingRunningFee ? (
+                  <button
+                    className="btn-outline w-full py-2 text-sm"
+                    onClick={() => {
+                      setEditingRunningFee(true);
+                      setRunningCustomFee(selectedTable.exhibition_custom_fee || '');
+                    }}
+                  >
+                    ✎ Edit Table Fee
+                  </button>
+                ) : (
+                  <div className="card-elevated p-3 space-y-2">
+                    <label className="block text-xs text-gray-500 uppercase tracking-wider font-semibold">
+                      Set Custom Table Fee
+                    </label>
+                    <div className="flex items-center gap-2">
+                      <span className="text-gray-400">₱</span>
+                      <input
+                        type="number"
+                        className="input flex-1"
+                        placeholder="e.g. 1500"
+                        value={runningCustomFee}
+                        onChange={e => setRunningCustomFee(e.target.value)}
+                        min="0"
+                        step="100"
+                      />
+                    </div>
+                    <div className="flex gap-2">
+                      <button
+                        className="btn-primary flex-1 py-2 text-sm"
+                        onClick={async () => {
+                          const fee = parseFloat(runningCustomFee);
+                          if (!fee || fee <= 0) {
+                            setErrorModal('Please enter a valid fee amount');
+                            return;
+                          }
+                          try {
+                            await axios.post(`/api/tables/${selectedTable.id}/exhibition-fee`, { custom_fee: fee }, h);
+                            const updated = await axios.get(`/api/tables/${selectedTable.id}`, h);
+                            setSelectedTable(updated.data);
+                            setEditingRunningFee(false);
+                          } catch (err) {
+                            setErrorModal(err.response?.data?.error || 'Failed to update fee');
+                          }
+                        }}
+                        disabled={busy || !runningCustomFee || parseFloat(runningCustomFee) <= 0}
+                      >
+                        Save Fee
+                      </button>
+                      <button
+                        className="btn-outline px-3 py-2 text-sm"
+                        onClick={() => setEditingRunningFee(false)}
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                    {!selectedTable.exhibition_custom_fee && (
+                      <p className="text-xs text-gray-500">
+                        Current default: ₱{(selectedTable.exhibition_bet * 0.10).toFixed(2)} (10%)
+                      </p>
+                    )}
+                  </div>
+                )}
                 <button
                   className="btn-primary w-full py-3"
                   onClick={() => {
+                    const fee = selectedTable.exhibition_custom_fee || selectedTable.exhibition_bet * 0.10 || 0;
                     setPayModal({
                       elapsed_seconds: 0,
-                      cost: selectedTable.exhibition_bet * 0.10 || 0,
+                      cost: fee,
                       start_time: null,
                       end_time: new Date().toISOString(),
                       isExhibition: true,
                       betAmount: selectedTable.exhibition_bet || 0,
+                      isCustomFee: !!selectedTable.exhibition_custom_fee,
                     });
                   }}
                 >
@@ -940,7 +1070,9 @@ export default function TableMonitor() {
                     <span className="text-gray-300 font-bold text-sm">Bet: ₱{payModal.betAmount.toLocaleString('en-PH')}</span>
                   </div>
                   <div className="flex justify-between items-center">
-                    <span className="text-gray-400 text-sm">Table Fee (10%)</span>
+                    <span className="text-gray-400 text-sm">
+                      {payModal.isCustomFee ? 'Custom Table Fee' : 'Table Fee (10%)'}
+                    </span>
                     <span className="text-white font-bold text-lg">₱{tableCost.toFixed(2)}</span>
                   </div>
                 </>

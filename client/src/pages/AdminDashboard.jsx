@@ -144,7 +144,9 @@ export default function AdminDashboard() {
       }, 0) || 0;
 
       return [
-        sale.end_time?.slice(11, 16) || '-',
+        sale.end_time
+          ? new Date(sale.end_time).toLocaleTimeString('en-PH', { hour: 'numeric', minute: '2-digit', hour12: true })
+          : '-',
         sale.table_number ? `Table ${sale.table_number}` : 'Walk-in',
         sale.table_cost > 0 ? sale.table_cost.toFixed(2) : '-',
         foodTotal > 0 ? foodTotal.toFixed(2) : '-',
@@ -157,7 +159,7 @@ export default function AdminDashboard() {
     const totalFood = tableData.reduce((sum, row) => sum + (row[3] !== '-' ? parseFloat(row[3]) : 0), 0);
     const totalDrinks = tableData.reduce((sum, row) => sum + (row[4] !== '-' ? parseFloat(row[4]) : 0), 0);
     const totalTable = tableData.reduce((sum, row) => sum + (row[2] !== '-' ? parseFloat(row[2]) : 0), 0);
-    const grandTotal = tableData.reduce((sum, row) => sum + parseFloat(row[5] || 0), 0);
+    const grandTotal = totalTable + totalFood + totalDrinks;
 
     tableData.push([
       '',
