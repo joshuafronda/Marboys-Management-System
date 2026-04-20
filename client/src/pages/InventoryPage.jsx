@@ -1,8 +1,11 @@
 import { useState, useEffect } from 'react';
 import Layout from '../components/Layout';
-import axios from 'axios';
+import { collection, doc, getDoc, getDocs, addDoc, updateDoc, deleteDoc, writeBatch, increment } from 'firebase/firestore';
+import { db } from '../firebase';
 import { useAuth } from '../context/AuthContext';
-import { Package, History, Plus } from 'lucide-react';
+import { Package, History, Plus, Download, Calendar } from 'lucide-react';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
 
 const FOOD_CATEGORIES = [
   'Appetizers',
@@ -30,19 +33,19 @@ const ALL_CATEGORIES = [...FOOD_CATEGORIES, ...DRINK_CATEGORIES];
 function FoodModal({ food, onSave, onClose, saveError }) {
   const [name, setName] = useState(food?.name || '');
   const [price, setPrice] = useState(food?.price || '');
-  const [stock, setStock] = useState(food?.stock ?? '');
+
   const [category, setCategory] = useState(food?.category || 'Appetizers');
   const [status, setStatus] = useState(food?.status || 'available');
   const [flavors, setFlavors] = useState(
     food?.flavors && food.flavors.length > 0
-      ? food.flavors.map(f => ({ flavor_name: f.flavor_name || '', price: String(f.price ?? ''), stock: String(f.stock ?? '') }))
+      ? food.flavors.map(f => ({ flavor_name: f.flavor_name || '', price: String(f.price ?? ''), stock: f.stock || 0 }))
       : []
   );
 
   const hasFlavors = flavors.length > 0 && flavors.some(f => f.flavor_name.trim() !== '');
 
   const handleAddFlavor = () => {
-    setFlavors([...flavors, { flavor_name: '', price: '', stock: '' }]);
+    setFlavors([...flavors, { flavor_name: '', price: '', stock: 0 }]);
   };
 
   const handleRemoveFlavor = (index) => {
@@ -62,14 +65,13 @@ function FoodModal({ food, onSave, onClose, saveError }) {
       ? validFlavors.map(f => ({
           flavor_name: f.flavor_name.trim(),
           price: parseFloat(f.price) || parseFloat(price) || 0,
-          stock: parseInt(f.stock) || 0,
+          stock: f.stock || 0
         }))
       : null;
 
     onSave({
       name,
       price: parseFloat(price),
-      stock: hasFlavors ? 0 : parseInt(stock),
       category,
       status: food ? status : 'available',
       flavors: flavorData,
@@ -133,36 +135,27 @@ function FoodModal({ food, onSave, onClose, saveError }) {
             {flavors.length > 0 && (
               <>
                 <div className="grid grid-cols-12 gap-2 text-xs text-gray-500 mb-2">
-                  <div className="col-span-5">Flavor Name</div>
-                  <div className="col-span-3">Price</div>
-                  <div className="col-span-3">Stock</div>
+                  <div className="col-span-6">Flavor Name</div>
+                  <div className="col-span-5">Price</div>
                   <div className="col-span-1"></div>
                 </div>
                 <div className="space-y-2">
                   {flavors.map((flavor, index) => (
                     <div key={index} className="grid grid-cols-12 gap-2 items-center">
                       <input
-                        className="input text-sm col-span-5"
+                        className="input text-sm col-span-6"
                         placeholder="e.g. Buffalo"
                         value={flavor.flavor_name}
                         onChange={e => handleFlavorChange(index, 'flavor_name', e.target.value)}
                       />
                       <input
-                        className="input text-sm col-span-3"
+                        className="input text-sm col-span-5"
                         type="number"
                         min="0"
                         step="0.01"
                         placeholder={price || '0'}
                         value={flavor.price}
                         onChange={e => handleFlavorChange(index, 'price', e.target.value)}
-                      />
-                      <input
-                        className="input text-sm col-span-3"
-                        type="number"
-                        min="0"
-                        placeholder="0"
-                        value={flavor.stock}
-                        onChange={e => handleFlavorChange(index, 'stock', e.target.value)}
                       />
                       <button
                         type="button"
@@ -178,13 +171,7 @@ function FoodModal({ food, onSave, onClose, saveError }) {
             )}
           </div>
 
-          {/* Stock field shown only when no flavors */}
-          {!hasFlavors && (
-            <div>
-              <label className="block text-xs text-gray-400 uppercase tracking-wider font-semibold mb-1.5">Stock Quantity</label>
-              <input className="input" type="number" min="0" value={stock} onChange={e => setStock(e.target.value)} placeholder="0" required />
-            </div>
-          )}
+
           {food && (
             <div>
               <label className="block text-xs text-gray-400 uppercase tracking-wider font-semibold mb-1.5">Availability</label>
@@ -238,12 +225,16 @@ export default function InventoryPage() {
     stock_date: new Date().toISOString().split('T')[0],
   });
 
+  const [historyDateFilter, setHistoryDateFilter] = useState('');
+
   const h = { headers: { Authorization: `Bearer ${token}` } };
 
   const fetchFoods = async () => {
     try {
-      const res = await axios.get('/api/foods', h);
-      setFoods(res.data);
+      const snap = await getDocs(collection(db, 'foods'));
+      const fetched = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      const sorted = fetched.sort((a, b) => a.name.localeCompare(b.name));
+      setFoods(sorted);
     } catch (err) {
       console.error(err);
     } finally {
@@ -253,8 +244,13 @@ export default function InventoryPage() {
 
   const fetchStockRecords = async () => {
     try {
-      const res = await axios.get('/api/daily-stock', h);
-      setStockRecords(res.data);
+      const snap = await getDocs(collection(db, 'daily_stock_inventory'));
+      const fetched = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      fetched.sort((a, b) => {
+        if (a.stock_date !== b.stock_date) return b.stock_date.localeCompare(a.stock_date);
+        return (b.created_at || '').localeCompare(a.created_at || '');
+      });
+      setStockRecords(fetched);
     } catch (err) {
       console.error(err);
     } finally {
@@ -270,9 +266,10 @@ export default function InventoryPage() {
   const handleSave = async (data) => {
     try {
       if (modal === 'add') {
-        await axios.post('/api/foods', data, h);
+        const newData = { ...data, stock: 0 };
+        await addDoc(collection(db, 'foods'), newData);
       } else {
-        await axios.put(`/api/foods/${modal.id}`, data, h);
+        await updateDoc(doc(db, 'foods', modal.id), data);
       }
       setModal(null);
       setSaveError('');
@@ -285,28 +282,31 @@ export default function InventoryPage() {
         setTimeout(() => setToast(''), 2500);
       }
     } catch (err) {
-      setSaveError(err.response?.data?.error || 'Failed to save');
+      console.error(err);
+      setSaveError('Failed to save');
     }
   };
 
   const handleDelete = async (id) => {
     try {
-      await axios.delete(`/api/foods/${id}`, h);
+      await deleteDoc(doc(db, 'foods', id));
       setDeleteTarget(null);
       fetchFoods();
       setToast('Successfully deleted');
       setTimeout(() => setToast(''), 2500);
     } catch (err) {
-      alert(err.response?.data?.error || 'Failed to delete');
+      console.error(err);
+      alert('Failed to delete');
     }
   };
 
   const toggleAvailability = async (food) => {
     const newStatus = food.status === 'available' ? 'unavailable' : 'available';
     try {
-      await axios.put(`/api/foods/${food.id}`, { status: newStatus }, h);
+      await updateDoc(doc(db, 'foods', food.id), { status: newStatus });
       fetchFoods();
     } catch (err) {
+      console.error(err);
       alert('Failed to update');
     }
   };
@@ -320,20 +320,32 @@ export default function InventoryPage() {
   const handleAddToSelection = (food) => {
     const existingIndex = selectedItems.findIndex(item => item.food_id === food.id);
     if (existingIndex !== -1) {
-      // Item already selected, remove it
+      // Item already selected, remove all entries for this food
       setSelectedItems(selectedItems.filter(item => item.food_id !== food.id));
     } else {
-      // Add new item to selection
-      setSelectedItems([
-        ...selectedItems,
-        {
+      // For flavored foods, add one entry per flavor
+      const hasFlavors = food.flavors && food.flavors.length > 0;
+      if (hasFlavors) {
+        const flavorEntries = food.flavors.map(f => ({
           food_id: food.id,
           food_name: food.name,
-          flavor_name: '',
+          flavor_name: f.flavor_name,
           added_stock: '',
           stock_date: selectedDate,
-        }
-      ]);
+        }));
+        setSelectedItems([...selectedItems, ...flavorEntries]);
+      } else {
+        setSelectedItems([
+          ...selectedItems,
+          {
+            food_id: food.id,
+            food_name: food.name,
+            flavor_name: '',
+            added_stock: '',
+            stock_date: selectedDate,
+          }
+        ]);
+      }
     }
   };
 
@@ -353,21 +365,85 @@ export default function InventoryPage() {
       return;
     }
 
-    const records = selectedItems.map(item => ({
-      food_id: item.food_id,
-      food_name: item.food_name,
-      flavor_name: item.flavor_name || null,
-      added_stock: parseInt(item.added_stock) || 0,
-      stock_date: item.stock_date,
-      notes: null,
-    }));
-
     try {
-      await axios.post('/api/daily-stock/batch', { records }, h);
+      const batch = writeBatch(db);
+      const now = new Date().toISOString();
+
+      // We need to fetch current food documents to update their stock safely
+      const foodRefMap = new Map();
+      const foodUpdatesMap = new Map(); // Store updates: { stock_increase: X, flavors: { 'BBQ': Y } }
+
+      // Map out all the additions
+      for (const item of selectedItems) {
+         const added = parseInt(item.added_stock) || 0;
+         if (!foodUpdatesMap.has(item.food_id)) {
+           foodUpdatesMap.set(item.food_id, { general: 0, flavors: {} });
+         }
+         
+         const updates = foodUpdatesMap.get(item.food_id);
+         if (item.flavor_name) {
+           updates.flavors[item.flavor_name] = (updates.flavors[item.flavor_name] || 0) + added;
+         } else {
+           updates.general += added;
+         }
+
+         // Prepare daily_stock_inventory insertion
+         const recordRef = doc(collection(db, 'daily_stock_inventory'));
+         batch.set(recordRef, {
+           food_id: item.food_id,
+           food_name: item.food_name,
+           flavor_name: item.flavor_name || null,
+           added_stock: added,
+           stock_date: item.stock_date,
+           notes: null,
+           created_at: now
+         });
+      }
+
+      // Apply updates to foods
+      for (const [foodId, updates] of foodUpdatesMap.entries()) {
+         const d = await getDoc(doc(db, 'foods', foodId));
+         if (d.exists()) {
+           const foodData = d.data();
+           let newStock = foodData.stock || 0;
+           let newFlavors = foodData.flavors || [];
+
+           if (updates.general > 0) {
+             newStock += updates.general;
+             // Ensure status is available when stock added
+             if (foodData.status === 'unavailable' && newStock > 0) {
+                batch.update(doc(db, 'foods', foodId), { stock: newStock, status: 'available' });
+             } else {
+                batch.update(doc(db, 'foods', foodId), { stock: newStock });
+             }
+           }
+
+           let flavorsChanged = false;
+           for (const [fName, toAdd] of Object.entries(updates.flavors)) {
+               const fIndex = newFlavors.findIndex(f => f.flavor_name === fName);
+               if (fIndex !== -1) {
+                  newFlavors[fIndex].stock = (newFlavors[fIndex].stock || 0) + toAdd;
+                  flavorsChanged = true;
+               }
+           }
+
+           if (flavorsChanged) {
+              const totalSum = newFlavors.reduce((sum, f) => sum + (f.stock || 0), 0);
+              if (foodData.status === 'unavailable' && totalSum > 0) {
+                 batch.update(doc(db, 'foods', foodId), { flavors: newFlavors, stock: totalSum, status: 'available' });
+              } else {
+                 batch.update(doc(db, 'foods', foodId), { flavors: newFlavors, stock: totalSum });
+              }
+           }
+         }
+      }
+
+      await batch.commit();
+
       setSelectedItems([]);
       fetchStockRecords();
       fetchFoods();
-      setToast(`${records.length} stock records added successfully`);
+      setToast(`${selectedItems.length} stock records added successfully`);
       setTimeout(() => setToast(''), 2500);
     } catch (err) {
       console.error(err);
@@ -389,7 +465,32 @@ export default function InventoryPage() {
 
   const handleStockDelete = async (id) => {
     try {
-      await axios.delete(`/api/daily-stock/${id}`, h);
+      const record = stockRecords.find(r => r.id === id);
+      if (!record) return;
+
+      const batch = writeBatch(db);
+      batch.delete(doc(db, 'daily_stock_inventory', id));
+
+      // Subtract stock from food (since we are deleting the log)
+      const foodDocRef = doc(db, 'foods', record.food_id);
+      const foodDoc = await getDoc(foodDocRef);
+      if (foodDoc.exists()) {
+        const fData = foodDoc.data();
+        if (record.flavor_name) {
+          const newFlavors = fData.flavors || [];
+          const mIdx = newFlavors.findIndex(fl => fl.flavor_name === record.flavor_name);
+          if (mIdx !== -1) {
+            newFlavors[mIdx].stock = Math.max(0, (newFlavors[mIdx].stock || 0) - record.added_stock);
+            const sum = newFlavors.reduce((a, b) => a + (b.stock || 0), 0);
+            batch.update(foodDocRef, { flavors: newFlavors, stock: sum });
+          }
+        } else {
+          batch.update(foodDocRef, { stock: increment(-record.added_stock) });
+        }
+      }
+
+      await batch.commit();
+
       setStockDeleteTarget(null);
       fetchStockRecords();
       fetchFoods();
@@ -403,14 +504,39 @@ export default function InventoryPage() {
 
   const handleStockUpdate = async (e) => {
     e.preventDefault();
-    const payload = {
-      added_stock: parseInt(stockFormData.added_stock),
-      stock_date: stockFormData.stock_date,
-      notes: null,
-    };
-
+    const newAddedStock = parseInt(stockFormData.added_stock) || 0;
+    const diff = newAddedStock - editingStockRecord.added_stock;
+    
     try {
-      await axios.put(`/api/daily-stock/${editingStockRecord.id}`, payload, h);
+      const batch = writeBatch(db);
+      batch.update(doc(db, 'daily_stock_inventory', editingStockRecord.id), {
+        added_stock: newAddedStock,
+        stock_date: stockFormData.stock_date
+      });
+
+      // Adjust the actual food's stock by the difference
+      if (diff !== 0) {
+        const foodDocRef = doc(db, 'foods', editingStockRecord.food_id);
+        const foodDoc = await getDoc(foodDocRef);
+        if (foodDoc.exists()) {
+           const fData = foodDoc.data();
+           let newStock = fData.stock + diff;
+           if (editingStockRecord.flavor_name) {
+              const newFlavors = fData.flavors || [];
+              const mIdx = newFlavors.findIndex(fl => fl.flavor_name === editingStockRecord.flavor_name);
+              if (mIdx !== -1) {
+                newFlavors[mIdx].stock = (newFlavors[mIdx].stock || 0) + diff;
+                const sum = newFlavors.reduce((a, b) => a + (b.stock || 0), 0);
+                batch.update(foodDocRef, { flavors: newFlavors, stock: sum });
+              }
+           } else {
+              batch.update(foodDocRef, { stock: increment(diff) });
+           }
+        }
+      }
+
+      await batch.commit();
+
       setShowStockModal(false);
       setEditingStockRecord(null);
       fetchStockRecords();
@@ -436,12 +562,59 @@ export default function InventoryPage() {
   };
 
   const filteredStockRecords = stockRecords.filter(r => r.stock_date === selectedDate);
-  const totalAdded = filteredStockRecords.reduce((sum, r) => sum + r.added_stock, 0);
+  const totalAdded = filteredStockRecords.reduce((sum, r) => sum + (r.added_stock || 0), 0);
+
+  const filteredHistoryRecords = historyDateFilter
+    ? stockRecords.filter(r => r.stock_date === historyDateFilter)
+    : stockRecords;
   
   const filteredMenuList = foods.filter(f =>
-    f.name.toLowerCase().includes(stockSearch.toLowerCase()) &&
+    String(f.name || '').toLowerCase().includes(stockSearch.toLowerCase()) &&
     (!stockCategoryFilter || f.category === stockCategoryFilter)
   );
+
+  const downloadStockReport = (records, title, filename) => {
+    const doc = new jsPDF();
+
+    doc.setFontSize(18);
+    doc.setFont('helvetica', 'bold');
+    doc.text(`MARBOYS - ${title}`, 14, 20);
+
+    doc.setFontSize(10);
+    doc.setFont('helvetica', 'normal');
+    const generatedDate = new Date().toLocaleDateString('en-PH', {
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+    doc.text(`Generated: ${generatedDate}`, 14, 28);
+    doc.text(`Total Records: ${records.length}`, 14, 34);
+
+    const totalStock = records.reduce((sum, r) => sum + r.added_stock, 0);
+    doc.text(`Total Stock Added: +${totalStock}`, 14, 40);
+
+    const tableData = records.map(record => [
+      record.stock_date,
+      record.food_name,
+      record.flavor_name || '-',
+      `+${record.added_stock}`,
+      record.category || '-',
+      new Date(record.created_at).toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit' })
+    ]);
+
+    autoTable(doc, {
+      startY: 48,
+      head: [['Date', 'Food Item', 'Flavor', 'Added Stock', 'Category', 'Time']],
+      body: tableData,
+      theme: 'grid',
+      headStyles: { fillColor: [0, 0, 0], textColor: 255 },
+      styles: { fontSize: 9, cellPadding: 3 },
+    });
+
+    doc.save(filename);
+  };
 
   return (
     <Layout>
@@ -768,27 +941,15 @@ export default function InventoryPage() {
                 <tbody>
                   {selectedItems.map((item, index) => (
                     <tr key={index} className="border-b border-gray-800 last:border-0 hover:bg-gray-900/30">
-                      <td className="px-4 py-3 text-white font-medium">{item.food_name}</td>
+                      <td className="px-4 py-3 text-white font-medium">
+                        {item.food_name}{item.flavor_name ? ` - ${item.flavor_name}` : ''}
+                      </td>
                       <td className="px-4 py-3 text-left">
-                        {(() => {
-                          const food = foods.find(f => f.id === item.food_id);
-                          const flavors = food?.flavors;
-                          const flavorsArray = typeof flavors === 'string' ? JSON.parse(flavors || '[]') : (flavors || []);
-                          return flavorsArray && flavorsArray.length > 0 ? (
-                            <select
-                              value={item.flavor_name}
-                              onChange={(e) => handleSelectionChange(index, 'flavor_name', e.target.value)}
-                              className="bg-gray-800 border border-gray-700 text-white text-xs px-2 py-1.5 rounded focus:outline-none focus:border-white w-full text-left"
-                              onClick={(e) => e.stopPropagation()}
-                            >
-                              {flavorsArray.map((flavor, idx) => (
-                                <option key={idx} value={flavor.flavor_name}>{flavor.flavor_name}</option>
-                              ))}
-                            </select>
-                          ) : (
-                            <span className="text-gray-500">-</span>
-                          );
-                        })()}
+                        {item.flavor_name ? (
+                          <span className="text-gray-300 text-xs">{item.flavor_name}</span>
+                        ) : (
+                          <span className="text-gray-500">-</span>
+                        )}
                       </td>
                       <td className="px-4 py-3 text-right">
                         <input
@@ -836,7 +997,18 @@ export default function InventoryPage() {
 
         {/* Records Table */}
         <div className="card p-6">
-          <h3 className="text-lg font-bold text-white mb-4">Today's Records</h3>
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-lg font-bold text-white">Today's Records</h3>
+            {filteredStockRecords.length > 0 && (
+              <button
+                onClick={() => downloadStockReport(filteredStockRecords, `Daily Stock (${selectedDate})`, `marboys-daily-stock-${selectedDate}.pdf`)}
+                className="flex items-center gap-2 text-xs px-3 py-1.5 bg-white text-black font-bold rounded-lg hover:bg-gray-200 transition-colors"
+              >
+                <Download className="w-4 h-4" />
+                Download PDF
+              </button>
+            )}
+          </div>
           {stockLoading ? (
             <p className="text-gray-500 text-sm">Loading...</p>
           ) : filteredStockRecords.length === 0 ? (
@@ -877,10 +1049,48 @@ export default function InventoryPage() {
     {activeTab === 'stock-history' && (
       <>
         <div className="card p-6">
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-4">
+              <h3 className="text-lg font-bold text-white">Stock History</h3>
+              <div className="flex items-center gap-2 bg-gray-800 rounded-lg px-3 py-1.5 border border-gray-700">
+                <Calendar className="w-4 h-4 text-gray-400" />
+                <input
+                  type="date"
+                  value={historyDateFilter}
+                  onChange={(e) => setHistoryDateFilter(e.target.value)}
+                  className="bg-transparent text-white text-xs focus:outline-none"
+                />
+              </div>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setHistoryDateFilter(new Date().toISOString().split('T')[0])}
+                  className={`text-xs px-3 py-1.5 rounded-lg border transition-all ${historyDateFilter === new Date().toISOString().split('T')[0] ? 'bg-white text-black border-white' : 'border-gray-700 text-gray-400 hover:border-gray-500'}`}
+                >
+                  Today
+                </button>
+                <button
+                  onClick={() => setHistoryDateFilter('')}
+                  className={`text-xs px-3 py-1.5 rounded-lg border transition-all ${!historyDateFilter ? 'bg-white text-black border-white' : 'border-gray-700 text-gray-400 hover:border-gray-500'}`}
+                >
+                  All Time
+                </button>
+              </div>
+            </div>
+            
+            {filteredHistoryRecords.length > 0 && (
+              <button
+                onClick={() => downloadStockReport(filteredHistoryRecords, `Stock History (${historyDateFilter || 'All Time'})`, `marboys-stock-history-${historyDateFilter || 'all'}.pdf`)}
+                className="flex items-center gap-2 text-xs px-3 py-1.5 bg-white text-black font-bold rounded-lg hover:bg-gray-200 transition-colors"
+              >
+                <Download className="w-4 h-4" />
+                Download PDF
+              </button>
+            )}
+          </div>
           {stockLoading ? (
             <p className="text-gray-500 text-sm">Loading...</p>
-          ) : stockRecords.length === 0 ? (
-            <p className="text-gray-600 text-sm">No stock history yet.</p>
+          ) : filteredHistoryRecords.length === 0 ? (
+            <p className="text-gray-600 text-sm">No stock history {historyDateFilter ? 'for selected date' : 'yet'}.</p>
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
@@ -895,7 +1105,7 @@ export default function InventoryPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {stockRecords.map((record) => (
+                  {filteredHistoryRecords.map((record) => (
                     <tr key={record.id} className="border-b border-gray-900">
                       <td className="py-3 text-white">{record.stock_date}</td>
                       <td className="py-3 text-white">{record.food_name}</td>

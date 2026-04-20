@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import Layout from '../components/Layout';
-import axios from 'axios';
+import Receipt from '../components/Receipt';
+import { collection, query, where, getDocs, onSnapshot } from 'firebase/firestore';
+import { db } from '../firebase';
 import { useAuth } from '../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import { Users, DollarSign, Clock, TrendingUp, Coffee, UtensilsCrossed, Download, Calendar } from 'lucide-react';
@@ -55,6 +57,7 @@ export default function AdminDashboard() {
   const [chartData, setChartData] = useState(null);
   const [chartRange, setChartRange] = useState('week'); // 'week' or 'month'
   const [expandedSale, setExpandedSale] = useState(null);
+  const [viewReceipt, setViewReceipt] = useState(null);
   const [loading, setLoading] = useState(true);
   const [dateFilter, setDateFilter] = useState(getPhilippinesDate()); // empty string = all time
   const todayStr = getPhilippinesDate();
@@ -63,18 +66,70 @@ export default function AdminDashboard() {
 
   const fetchData = async () => {
     try {
-      const params = new URLSearchParams({ limit: 100 });
-      if (dateFilter) params.append('date', dateFilter);
-      const [tablesRes, salesRes, foodsRes, chartRes] = await Promise.all([
-        axios.get('/api/tables', h),
-        axios.get(`/api/sales/all?${params}`, h),
-        axios.get('/api/foods', h),
-        axios.get(`/api/sales/chart?range=${chartRange}`, h),
-      ]);
-      setTables(tablesRes.data);
-      setTodaySales(salesRes.data);
-      setFoods(foodsRes.data);
-      setChartData(chartRes.data);
+      // Fetch Tables & Foods real-time (but once for simplicity here or use onSnapshot)
+      const tablesSnap = await getDocs(collection(db, 'tables'));
+      setTables(tablesSnap.docs.map(d => ({ id: d.id, ...d.data() })));
+      
+      const foodsSnap = await getDocs(collection(db, 'foods'));
+      setFoods(foodsSnap.docs.map(d => ({ id: d.id, ...d.data() })));
+
+      // Fetch Sales for DateFilter
+      let q;
+      if (dateFilter) {
+        const start = dateFilter + 'T00:00:00.000Z';
+        const end = dateFilter + 'T23:59:59.999Z';
+        q = query(collection(db, 'sales'), where('created_at', '>=', start), where('created_at', '<=', end));
+      } else {
+        q = collection(db, 'sales');
+      }
+      const salesSnap = await getDocs(q);
+      const sales = salesSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+      sales.sort((a,b) => (b.created_at || '').localeCompare(a.created_at || ''));
+      setTodaySales(sales);
+
+      // Fetch Chart Data
+      const now = new Date();
+      let startChartDate = new Date(now);
+      if (chartRange === 'week') {
+        startChartDate.setDate(now.getDate() - 6);
+      } else {
+        startChartDate.setDate(now.getDate() - 29);
+      }
+      startChartDate.setHours(0,0,0,0);
+      const chartStartStr = startChartDate.toISOString();
+      const chartQ = query(collection(db, 'sales'), where('created_at', '>=', chartStartStr));
+      const cSnap = await getDocs(chartQ);
+      const cSales = cSnap.docs.map(d => d.data());
+
+      const daysCount = chartRange === 'week' ? 7 : 30;
+      const chartDays = [];
+      for (let i = daysCount - 1; i >= 0; i--) {
+        const d = new Date(now);
+        d.setDate(d.getDate() - i);
+        const dStr = d.toISOString().split('T')[0];
+        
+        // aggregate for this day
+        const daySales = cSales.filter(s => s.created_at?.startsWith(dStr));
+        let tableSum = 0; let foodSumOrigin = 0; let totSum = 0;
+        daySales.forEach(s => {
+           tableSum += parseFloat(s.table_cost || 0);
+           totSum += parseFloat(s.total || 0);
+           // Calculate food sales avoiding drink totals dynamically since beverages can't be hardcoded easily.
+           // Quick backend logic was relying on food_total!
+           const ft = s.food_items?.reduce((fs, item) => fs + (item.price * item.quantity), 0) || 0;
+           foodSumOrigin += ft;
+        });
+
+        chartDays.push({
+           date: dStr.slice(5),
+           total: totSum,
+           tableTotal: tableSum,
+           foodTotal: foodSumOrigin,
+           count: daySales.length
+        });
+      }
+      setChartData({ data: chartDays });
+
     } catch (err) {
       console.error(err);
     } finally {
@@ -100,8 +155,8 @@ export default function AdminDashboard() {
   let todayDrinkSales = 0;
   
   todaySales.forEach(sale => {
-    if (sale.items && sale.items.length > 0) {
-      sale.items.forEach(item => {
+    if (sale.food_items && sale.food_items.length > 0) {
+      sale.food_items.forEach(item => {
         const itemTotal = item.price * item.quantity;
         if (drinkCategorySet.has(item.food_id)) {
           todayDrinkSales += itemTotal;
@@ -133,12 +188,12 @@ export default function AdminDashboard() {
 
     // Table data
     const tableData = todaySales.map(sale => {
-      const foodTotal = sale.items?.reduce((sum, item) => {
+      const foodTotal = sale.food_items?.reduce((sum, item) => {
         const itemTotal = item.price * item.quantity;
         return drinkCategorySet.has(item.food_id) ? sum : sum + itemTotal;
       }, 0) || 0;
 
-      const drinkTotal = sale.items?.reduce((sum, item) => {
+      const drinkTotal = sale.food_items?.reduce((sum, item) => {
         const itemTotal = item.price * item.quantity;
         return drinkCategorySet.has(item.food_id) ? sum + itemTotal : sum;
       }, 0) || 0;
@@ -442,14 +497,16 @@ export default function AdminDashboard() {
                     <table className="w-full text-sm">
                       <thead className="border-b border-gray-800">
                         <tr>
-                          <th className="text-left py-2 text-gray-500 font-semibold text-xs uppercase" style={{ width: '60px' }}>Time</th>
-                          <th className="text-left py-2 text-gray-500 font-semibold text-xs uppercase" style={{ width: '120px' }}>Type</th>
-                          <th className="text-right py-2 text-gray-500 font-semibold text-xs uppercase" style={{ width: '100px' }}>Table Time</th>
-                          <th className="text-right py-2 text-gray-500 font-semibold text-xs uppercase" style={{ width: '90px' }}>Food</th>
-                          <th className="text-right py-2 text-gray-500 font-semibold text-xs uppercase" style={{ width: '90px' }}>Drinks</th>
-                          <th className="text-right py-2 text-gray-500 font-semibold text-xs uppercase" style={{ width: '90px' }}>Total</th>
-                          <th className="text-right py-2 text-gray-500 font-semibold text-xs uppercase" style={{ width: '90px' }}>Received</th>
-                          <th className="text-center py-2 text-gray-500 font-semibold text-xs uppercase" style={{ width: '40px' }}></th>
+                          <th className="text-center px-4 py-2.5 text-gray-500 font-semibold text-xs uppercase tracking-wider" style={{ width: '5%' }}>No.</th>
+                          <th className="text-left px-4 py-2.5 text-gray-500 font-semibold text-xs uppercase tracking-wider" style={{ width: '12%' }}>Type</th>
+                          <th className="text-left px-4 py-2.5 text-gray-500 font-semibold text-xs uppercase tracking-wider" style={{ width: '15%' }}>Date/Time</th>
+                          <th className="text-center px-4 py-2.5 text-gray-500 font-semibold text-xs uppercase tracking-wider" style={{ width: '8%' }}>Hours</th>
+                          <th className="text-right px-4 py-2.5 text-gray-500 font-semibold text-xs uppercase tracking-wider" style={{ width: '10%' }}>Table Cost</th>
+                          <th className="text-right px-4 py-2.5 text-gray-500 font-semibold text-xs uppercase tracking-wider" style={{ width: '10%' }}>Food</th>
+                          <th className="text-right px-4 py-2.5 text-gray-500 font-semibold text-xs uppercase tracking-wider" style={{ width: '10%' }}>Drinks</th>
+                          <th className="text-right px-4 py-2.5 text-gray-500 font-semibold text-xs uppercase tracking-wider" style={{ width: '10%' }}>Total</th>
+                          <th className="text-right px-4 py-2.5 text-gray-500 font-semibold text-xs uppercase tracking-wider" style={{ width: '10%' }}>Received</th>
+                          <th className="text-center px-4 py-2.5 text-gray-500 font-semibold text-xs uppercase tracking-wider" style={{ width: '5%' }}>Details</th>
                         </tr>
                       </thead>
                     </table>
@@ -457,119 +514,139 @@ export default function AdminDashboard() {
                   {/* Scrollable Body */}
                   <div className="flex-1 overflow-y-auto overflow-x-auto">
                     <table className="w-full text-sm">
+                      <colgroup>
+                        <col style={{ width: '5%' }} /><col style={{ width: '12%' }} /><col style={{ width: '15%' }} />
+                        <col style={{ width: '8%' }} /><col style={{ width: '10%' }} /><col style={{ width: '10%' }} />
+                        <col style={{ width: '10%' }} /><col style={{ width: '10%' }} /><col style={{ width: '10%' }} />
+                        <col style={{ width: '5%' }} />
+                      </colgroup>
                       <tbody>
-                        {todaySales.map(sale => (
+                        {todaySales.map((sale, index) => (
                           <React.Fragment key={sale.id}>
-                            <tr className="border-b border-gray-900/50 hover:bg-gray-900/30">
-                              <td className="py-3 text-gray-400 text-xs" style={{ width: '60px' }}>{sale.end_time?.slice(11, 16)}</td>
-                              <td className="py-3 text-white font-medium" style={{ width: '120px' }}>
-                                {sale.table_number ? (
-                                  <span className="flex items-center gap-1">
-                                    <Clock className="w-3 h-3 text-blue-400" />
-                                    Table {sale.table_number}
+                            <tr
+                              className="border-b border-gray-900 hover:bg-gray-900/30 transition-colors cursor-pointer"
+                              onClick={() => setExpandedSale(expandedSale === sale.id ? null : sale.id)}
+                            >
+                              <td className="px-4 py-2.5 text-gray-500 font-bold text-sm">{todaySales.length - index}</td>
+                              <td className="px-4 py-2.5 text-white font-medium">
+                                {sale.table_number ? `Table ${sale.table_number}` : 'Walk-in'}
+                              </td>
+                              <td className="px-4 py-2.5 text-gray-400 text-xs">
+                                <div>{new Date(sale.end_time || sale.date).toLocaleDateString('en-PH', { timeZone: 'Asia/Manila', year: 'numeric', month: 'short', day: 'numeric' })}</div>
+                                {sale.end_time && <div className="text-gray-600">{new Date(sale.end_time).toLocaleTimeString('en-PH', { timeZone: 'Asia/Manila', hour: '2-digit', minute: '2-digit', hour12: true })}</div>}
+                              </td>
+                              <td className="px-4 py-2.5 text-center text-gray-300 text-xs">
+                                {sale.set_hours > 0 ? (
+                                  <span className="bg-gray-800 px-2 py-0.5 rounded font-semibold">
+                                    {sale.set_hours >= 1
+                                      ? `${Math.floor(sale.set_hours)}h${sale.set_hours % 1 > 0 ? ` ${Math.round((sale.set_hours % 1) * 60)}m` : ''}`
+                                      : sale.set_hours * 60 >= 1
+                                        ? `${Math.round(sale.set_hours * 60)}m`
+                                        : `${Math.round(sale.set_hours * 3600)}s`}
                                   </span>
                                 ) : (
-                                  <span className="flex items-center gap-1">
-                                    <Users className="w-3 h-3 text-amber-400" />
-                                    Walk-in POS
-                                  </span>
+                                  <span className="text-gray-600">—</span>
                                 )}
                               </td>
-                              <td className="py-3 text-right text-gray-400" style={{ width: '100px' }}>
-                                {parseFloat(sale.table_cost || 0) > 0 ? (
-                                  <span className="text-blue-400">₱{parseFloat(sale.table_cost).toFixed(2)}</span>
-                                ) : (
-                                  <span className="text-gray-600">-</span>
-                                )}
+                              <td className="px-4 py-2.5 text-right text-gray-300">
+                                {(sale.table_cost || 0) > 0 ? `₱${parseFloat(sale.table_cost).toFixed(2)}` : '—'}
                               </td>
-                              <td className="py-3 text-right text-gray-400" style={{ width: '90px' }}>
+                              <td className="px-4 py-2.5 text-right text-gray-300">
                                 {(() => {
-                                  const foodTotal = sale.items?.reduce((sum, item) => {
+                                  const foodTotal = sale.food_items?.reduce((sum, item) => {
                                     return drinkCategorySet.has(item.food_id) ? sum : sum + (item.price * item.quantity);
                                   }, 0) || 0;
-                                  return foodTotal > 0 ? (
-                                    <span className="text-amber-400">₱{foodTotal.toFixed(2)}</span>
-                                  ) : (
-                                    <span className="text-gray-600">-</span>
-                                  );
+                                  return foodTotal > 0 ? `₱${foodTotal.toFixed(2)}` : '—';
                                 })()}
                               </td>
-                              <td className="py-3 text-right text-gray-400" style={{ width: '90px' }}>
+                              <td className="px-4 py-2.5 text-right text-gray-300">
                                 {(() => {
-                                  const drinkTotal = sale.items?.reduce((sum, item) => {
+                                  const drinkTotal = sale.food_items?.reduce((sum, item) => {
                                     return drinkCategorySet.has(item.food_id) ? sum + (item.price * item.quantity) : sum;
                                   }, 0) || 0;
-                                  return drinkTotal > 0 ? (
-                                    <span className="text-blue-400">₱{drinkTotal.toFixed(2)}</span>
-                                  ) : (
-                                    <span className="text-gray-600">-</span>
-                                  );
+                                  return drinkTotal > 0 ? `₱${drinkTotal.toFixed(2)}` : '—';
                                 })()}
                               </td>
-                              <td className="py-3 text-right text-white font-bold" style={{ width: '90px' }}>
-                                ₱{parseFloat(sale.total).toFixed(2)}
+                              <td className="px-4 py-2.5 text-right text-white font-bold">
+                                ₱{parseFloat(sale.total || 0).toFixed(2)}
                               </td>
-                              <td className="py-3 text-right text-green-400 font-medium" style={{ width: '90px' }}>
+                              <td className="px-4 py-2.5 text-right text-green-400 font-medium">
                                 ₱{parseFloat(sale.received || 0).toFixed(2)}
                               </td>
-                              <td className="py-3 text-center" style={{ width: '40px' }}>
-                                {(sale.items?.length > 0 || parseFloat(sale.table_cost) > 0) && (
-                                  <button
-                                    onClick={() => setExpandedSale(expandedSale === sale.id ? null : sale.id)}
-                                    className="text-gray-500 hover:text-white transition-colors"
-                                  >
-                                    <svg
-                                      className={`w-4 h-4 transform transition-transform ${expandedSale === sale.id ? 'rotate-180' : ''}`}
-                                      fill="none"
-                                      viewBox="0 0 24 24"
-                                      stroke="currentColor"
-                                    >
-                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                                    </svg>
-                                  </button>
-                                )}
+                              <td className="px-4 py-2.5 text-center text-gray-600 text-xs">
+                                {expandedSale === sale.id ? '▲' : '▼'}
                               </td>
                             </tr>
                             {/* Expanded Details */}
                             {expandedSale === sale.id && (
-                              <tr>
-                                <td colSpan="8" className="py-0">
-                                  <div className="bg-gray-900/50 px-4 py-3 mb-2 rounded-lg">
-                                    {/* Table Time Details */}
-                                    {parseFloat(sale.table_cost) > 0 && (
-                                      <div className="mb-3 pb-3 border-b border-gray-800">
-                                        <p className="text-xs text-gray-500 uppercase tracking-wider mb-2">Table Time</p>
-                                        <div className="flex justify-between text-sm">
-                                          <span className="text-gray-400">
-                                            {sale.start_time?.slice(11, 16)} - {sale.end_time?.slice(11, 16)}
-                                            {sale.set_hours > 0 && <span className="text-gray-600 ml-2">({sale.set_hours} hrs)</span>}
-                                          </span>
-                                          <span className="text-blue-400 font-medium">₱{parseFloat(sale.table_cost).toFixed(2)}</span>
-                                        </div>
-                                      </div>
-                                    )}
-                                    {/* Food Items */}
-                                    {sale.items?.length > 0 && (
+                              <tr className="bg-gray-950">
+                                <td colSpan="10" className="px-4 py-2">
+                                  <div className="pl-4 border-l-2 border-gray-800 space-y-1">
+                                    <button
+                                      onClick={() => setViewReceipt(sale)}
+                                      className="text-xs px-3 py-1.5 bg-white text-black font-bold rounded-lg hover:bg-gray-200 transition-colors mb-2"
+                                    >
+                                      View Receipt
+                                    </button>
+                                    {parseFloat(sale.table_cost) > 0 && sale.category === 'exhibition' && (
                                       <div>
-                                        <p className="text-xs text-gray-500 uppercase tracking-wider mb-2">Food & Beverage Items</p>
-                                        <div className="space-y-1">
-                                          {sale.items.map((item, idx) => (
-                                            <div key={idx} className="flex justify-between text-sm">
-                                              <span className="text-gray-300">
-                                                {item.food_name}{item.flavor_name ? ` - ${item.flavor_name}` : ''} <span className="text-gray-500">× {item.quantity}</span>
-                                              </span>
-                                              <span className="text-amber-400">₱{(item.price * item.quantity).toFixed(2)}</span>
-                                            </div>
-                                          ))}
+                                        <p className="text-xs text-gray-500 uppercase tracking-wider font-semibold mb-1">Exhibition Match</p>
+                                        <div className="text-xs text-gray-400 py-0.5">
+                                          <span className="text-gray-300">{sale.details || 'Table Fee'}</span>
                                         </div>
-                                        <div className="flex justify-between text-sm mt-2 pt-2 border-t border-gray-800">
-                                          <span className="text-gray-500">Food Subtotal</span>
-                                          <span className="text-amber-400 font-medium">₱{parseFloat(sale.food_total).toFixed(2)}</span>
+                                        <div className="flex justify-between text-xs text-gray-400 py-0.5">
+                                          <span>Table Fee</span>
+                                          <span className="text-gray-300">₱{parseFloat(sale.table_cost || 0).toFixed(2)}</span>
                                         </div>
                                       </div>
                                     )}
-                                    {/* Cashier Info */}
-                                    <div className="mt-3 pt-2 border-t border-gray-800 text-xs text-gray-600">
+                                    {parseFloat(sale.table_cost) > 0 && sale.category !== 'exhibition' && (
+                                      <div>
+                                        <p className="text-xs text-gray-500 uppercase tracking-wider font-semibold mb-1">Table Time</p>
+                                        {sale.set_hours > 0 && (
+                                          <>
+                                            <div className="flex justify-between text-xs text-gray-400 py-0.5">
+                                              <span>Prepaid Duration</span>
+                                              <span className="text-gray-300">
+                                                {sale.set_hours >= 1
+                                                  ? `${Math.floor(sale.set_hours)}h${sale.set_hours % 1 > 0 ? ` ${Math.round((sale.set_hours % 1) * 60)}m` : ''}`
+                                                  : sale.set_hours * 60 >= 1
+                                                    ? `${Math.round(sale.set_hours * 60)}m`
+                                                    : `${Math.round(sale.set_hours * 3600)}s`}
+                                              </span>
+                                            </div>
+                                            <div className="flex justify-between text-xs text-gray-400 py-0.5">
+                                              <span>Rate</span>
+                                              <span className="text-gray-300">₱200/hr</span>
+                                            </div>
+                                          </>
+                                        )}
+                                        {!sale.set_hours && (
+                                          <div className="flex justify-between text-xs text-gray-400 py-0.5">
+                                            <span>Elapsed</span>
+                                            <span className="text-gray-300">
+                                              {sale.start_time?.slice(11, 16)} - {sale.end_time?.slice(11, 16)}
+                                            </span>
+                                          </div>
+                                        )}
+                                        <div className="flex justify-between text-xs text-gray-400 py-0.5">
+                                          <span>Table Cost</span>
+                                          <span className="text-gray-300">₱{parseFloat(sale.table_cost).toFixed(2)}</span>
+                                        </div>
+                                      </div>
+                                    )}
+                                    {sale.food_items?.length > 0 && (
+                                      <div>
+                                        <p className="text-xs text-gray-500 uppercase tracking-wider font-semibold mb-1">Food Items</p>
+                                        {sale.food_items.map((item, idx) => (
+                                          <div key={idx} className="flex justify-between text-xs text-gray-400 py-0.5">
+                                            <span>{item.food_name || item.name}{item.flavor_name ? ` - ${item.flavor_name}` : ''} × {item.quantity}</span>
+                                            <span className="text-gray-300">₱{(item.price * item.quantity).toFixed(2)}</span>
+                                          </div>
+                                        ))}
+                                      </div>
+                                    )}
+                                    <div className="text-xs text-gray-600 pt-1">
                                       Cashier: {sale.cashier}
                                     </div>
                                   </div>
@@ -586,20 +663,20 @@ export default function AdminDashboard() {
                     <table className="w-full text-sm">
                       <tfoot>
                         <tr>
-                          <td className="py-3 text-gray-500 text-xs uppercase font-semibold" style={{ width: '180px' }} colSpan="2">Total ({todaySales.length} transactions)</td>
-                          <td className="py-3 text-right text-blue-400 font-bold" style={{ width: '100px' }}>
+                          <td className="py-3 px-4 text-gray-500 text-xs uppercase font-semibold" colSpan="4">Total ({todaySales.length} transactions)</td>
+                          <td className="py-3 px-4 text-right text-gray-300 font-bold">
                             ₱{todayTableSales.toFixed(2)}
                           </td>
-                          <td className="py-3 text-right text-amber-400 font-bold" style={{ width: '90px' }}>
+                          <td className="py-3 px-4 text-right text-gray-300 font-bold">
                             ₱{todayFoodSales.toFixed(2)}
                           </td>
-                          <td className="py-3 text-right text-blue-400 font-bold" style={{ width: '90px' }}>
+                          <td className="py-3 px-4 text-right text-gray-300 font-bold">
                             ₱{todayDrinkSales.toFixed(2)}
                           </td>
-                          <td className="py-3 text-right text-white font-black" style={{ width: '90px' }}>
+                          <td className="py-3 px-4 text-right text-white font-black">
                             ₱{todayTotal.toFixed(2)}
                           </td>
-                          <td style={{ width: '40px' }}></td>
+                          <td className="py-3 px-4" colSpan="2"></td>
                         </tr>
                       </tfoot>
                     </table>
@@ -610,6 +687,30 @@ export default function AdminDashboard() {
           </>
         )}
       </div>
+
+      {viewReceipt && (
+        <Receipt
+          data={{
+            table_number: viewReceipt.table_number,
+            table_cost: viewReceipt.table_cost,
+            food_items: viewReceipt.food_items || [],
+            food_total: viewReceipt.food_total || (viewReceipt.food_items ? viewReceipt.food_items.reduce((sum, i) => sum + (i.price * i.quantity), 0) : 0),
+            total: viewReceipt.total,
+            received: parseFloat(viewReceipt.received || viewReceipt.total || 0),
+            change: parseFloat(viewReceipt.received || viewReceipt.total || 0) - parseFloat(viewReceipt.total),
+            cashier: viewReceipt.cashier,
+            sale_date: viewReceipt.end_time || viewReceipt.date,
+            payment_mode: viewReceipt.payment_mode,
+            set_hours: viewReceipt.set_hours,
+            start_time: viewReceipt.start_time,
+            end_time: viewReceipt.end_time,
+            elapsed_seconds: viewReceipt.elapsed_seconds || (viewReceipt.set_hours ? viewReceipt.set_hours * 3600 : 0),
+            category: viewReceipt.category,
+            details: viewReceipt.details,
+          }}
+          onClose={() => setViewReceipt(null)}
+        />
+      )}
     </Layout>
   );
 }

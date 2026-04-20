@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import Layout from '../components/Layout';
 import Receipt from '../components/Receipt';
-import axios from 'axios';
+import { collection, query, where, orderBy, getDocs, doc, deleteDoc, updateDoc, getDoc, writeBatch } from 'firebase/firestore';
+import { db } from '../firebase';
 import { useAuth } from '../context/AuthContext';
 
 export default function SalesHistory() {
@@ -30,15 +31,31 @@ export default function SalesHistory() {
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState('');
 
-  const h = { headers: { Authorization: `Bearer ${token}` } };
-
   const fetchSales = async () => {
     setLoading(true);
     try {
-      const params = new URLSearchParams({ page, limit: 30 });
-      if (dateFilter) params.append('date', dateFilter);
-      const res = await axios.get(`/api/sales/all?${params}`, h);
-      setSales(res.data);
+      let q;
+      if (dateFilter) {
+        q = query(collection(db, 'sales'), where('date', '==', dateFilter), orderBy('created_at', 'desc'));
+      } else {
+        q = query(collection(db, 'sales'), orderBy('created_at', 'desc'));
+      }
+      const snap = await getDocs(q);
+      const allSales = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      
+      // Manual pagination
+      const start = (page - 1) * 30;
+      const paged = allSales.slice(start, start + 30);
+      
+      // Fetch items for each sale
+      const salesWithItems = await Promise.all(paged.map(async (sale) => {
+        const itemsQuery = query(collection(db, 'sale_items'), where('sale_id', '==', sale.id));
+        const itemsSnap = await getDocs(itemsQuery);
+        const items = itemsSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+        return { ...sale, items };
+      }));
+      
+      setSales(salesWithItems);
     } catch (err) {
       console.error(err);
     } finally {
@@ -51,13 +68,20 @@ export default function SalesHistory() {
   // Check if void password is set (owner only)
   useEffect(() => {
     if (user?.role === 'owner') {
-      axios.get('/api/auth/void-password', h).then(res => setVoidPwSet(res.data.isSet)).catch(() => {});
+      const checkVoidPw = async () => {
+        const usersSnap = await getDocs(collection(db, 'users'));
+        const ownerDoc = usersSnap.docs.find(d => d.data().role === 'owner');
+        if (ownerDoc) {
+          setVoidPwSet(!!ownerDoc.data().void_password);
+        }
+      };
+      checkVoidPw().catch(() => {});
     }
   }, [user?.role]);
 
   // Get today's date YYYY-MM-DD
   const todayStr = new Date().toISOString().split('T')[0];
-  const totalRevenue = sales.reduce((s, sale) => s + sale.total, 0);
+  const totalRevenue = sales.reduce((s, sale) => s + (sale.total || 0), 0);
 
   const toggleExpand = (id) => {
     setExpanded(prev => (prev === id ? null : id));
@@ -79,17 +103,48 @@ export default function SalesHistory() {
     setVoiding(true);
     setVoidError('');
     try {
-      await axios.post(`/api/sales/${voidModal.saleId}/items/${voidModal.itemId}/void`, {
-        password: voidPassword,
-        reason: voidReason,
-        quantity: voidQty,
-      }, h);
+      // Verify void password
+      const usersSnap = await getDocs(collection(db, 'users'));
+      const ownerDoc = usersSnap.docs.find(d => d.data().role === 'owner' && d.data().void_password === voidPassword);
+      if (!ownerDoc) {
+        setVoidError('Invalid void password');
+        setVoiding(false);
+        return;
+      }
+      
+      // Update sale item as voided
+      const itemRef = doc(db, 'sale_items', voidModal.itemId);
+      await updateDoc(itemRef, {
+        voided: true,
+        void_reason: voidReason,
+        voided_by: user.name,
+        voided_at: new Date().toISOString()
+      });
+      
+      // Recalculate sale totals
+      const saleRef = doc(db, 'sales', voidModal.saleId);
+      const saleSnap = await getDoc(saleRef);
+      if (saleSnap.exists()) {
+        const saleData = saleSnap.data();
+        const itemsQuery = query(collection(db, 'sale_items'), where('sale_id', '==', voidModal.saleId));
+        const itemsSnap = await getDocs(itemsQuery);
+        let newFoodTotal = 0;
+        itemsSnap.forEach(d => {
+          const item = d.data();
+          if (!item.voided) {
+            newFoodTotal += (item.price || 0) * (item.quantity || 0);
+          }
+        });
+        const newTotal = (saleData.table_cost || 0) + newFoodTotal;
+        await updateDoc(saleRef, { food_total: newFoodTotal, total: newTotal });
+      }
+      
       setVoidModal(null);
       setToast(`Voided ${voidQty} × ${voidModal.itemName}`);
       setTimeout(() => setToast(''), 3000);
       fetchSales();
     } catch (err) {
-      setVoidError(err.response?.data?.error || 'Failed to void item');
+      setVoidError(err.message || 'Failed to void item');
     } finally {
       setVoiding(false);
     }
@@ -109,16 +164,34 @@ export default function SalesHistory() {
     setDeleting(true);
     setDeleteError('');
     try {
-      await axios.delete(`/api/sales/${deleteModal.saleId}`, {
-        headers: { Authorization: `Bearer ${token}` },
-        data: { password: deletePassword }
-      });
+      // Verify owner password
+      const usersSnap = await getDocs(collection(db, 'users'));
+      const ownerDoc = usersSnap.docs.find(d => d.data().role === 'owner' && d.data().void_password === deletePassword);
+      if (!ownerDoc) {
+        setDeleteError('Invalid password');
+        setDeleting(false);
+        return;
+      }
+      
+      // Delete sale and related items
+      const batch = writeBatch(db);
+      
+      // Delete sale items first
+      const itemsQuery = query(collection(db, 'sale_items'), where('sale_id', '==', deleteModal.saleId));
+      const itemsSnap = await getDocs(itemsQuery);
+      itemsSnap.forEach(d => batch.delete(d.ref));
+      
+      // Delete sale
+      batch.delete(doc(db, 'sales', deleteModal.saleId));
+      
+      await batch.commit();
+      
       setDeleteModal(null);
       setToast('Sale deleted successfully');
       setTimeout(() => setToast(''), 3000);
       fetchSales();
     } catch (err) {
-      setDeleteError(err.response?.data?.error || 'Failed to delete sale');
+      setDeleteError(err.message || 'Failed to delete sale');
     } finally {
       setDeleting(false);
     }
@@ -216,13 +289,13 @@ export default function SalesHistory() {
                     {user?.role === 'owner' && <col className="w-[10%]" />}
                   </colgroup>
                   <tbody>
-                  {sales.map(sale => (
+                  {sales.map((sale, index) => (
                     <React.Fragment key={sale.id}>
                       <tr
                         className="border-b border-gray-900 hover:bg-gray-900/30 transition-colors cursor-pointer"
                         onClick={() => toggleExpand(sale.id)}
                       >
-                        <td className="px-4 py-2.5 text-gray-600 font-mono text-xs">{sale.id}</td>
+                        <td className="px-4 py-2.5 text-gray-500 font-bold text-sm">{(page - 1) * 30 + (sales.length - index)}</td>
                         <td className="px-4 py-2.5 text-white font-medium">
                           {sale.table_number ? `Table ${sale.table_number}` : 'Walk-in'}
                         </td>
@@ -233,20 +306,27 @@ export default function SalesHistory() {
                         <td className="px-4 py-2.5 text-center text-gray-300 text-xs">
                           {sale.set_hours > 0 ? (
                             <span className="bg-gray-800 px-2 py-0.5 rounded font-semibold">
-                              {sale.set_hours >= 1 ? `${Math.floor(sale.set_hours)}h${sale.set_hours % 1 > 0 ? ` ${Math.round((sale.set_hours % 1) * 60)}m` : ''}` : `${Math.round(sale.set_hours * 60)}m`}
+                              {sale.set_hours >= 1 
+                                ? `${Math.floor(sale.set_hours)}h${sale.set_hours % 1 > 0 ? ` ${Math.round((sale.set_hours % 1) * 60)}m` : ''}` 
+                                : sale.set_hours * 60 >= 1
+                                  ? `${Math.round(sale.set_hours * 60)}m`
+                                  : `${Math.round(sale.set_hours * 3600)}s`}
                             </span>
                           ) : (
                             <span className="text-gray-600">—</span>
                           )}
                         </td>
                         <td className="px-4 py-2.5 text-right text-gray-300">
-                          {sale.table_cost > 0 ? `₱${parseFloat(sale.table_cost).toFixed(2)}` : '—'}
+                          {(sale.table_cost || 0) > 0 ? `₱${parseFloat(sale.table_cost).toFixed(2)}` : '—'}
                         </td>
                         <td className="px-4 py-2.5 text-right text-gray-300">
-                          {sale.food_total > 0 ? `₱${parseFloat(sale.food_total).toFixed(2)}` : '—'}
+                          {(() => {
+                            const foodTotal = sale.food_total || sale.food_items?.reduce((sum, item) => sum + (item.price * item.quantity), 0) || 0;
+                            return foodTotal > 0 ? `₱${parseFloat(foodTotal).toFixed(2)}` : '—';
+                          })()}
                         </td>
                         <td className="px-4 py-2.5 text-right text-white font-bold">
-                          ₱{parseFloat(sale.total).toFixed(2)}
+                          ₱{parseFloat(sale.total || 0).toFixed(2)}
                         </td>
                         <td className="px-4 py-2.5 text-right text-green-400 font-medium">
                           ₱{parseFloat(sale.received || 0).toFixed(2)}
@@ -266,7 +346,7 @@ export default function SalesHistory() {
                           </td>
                         )}
                       </tr>
-                      {expanded === sale.id && (sale.set_hours > 0 || (sale.items && sale.items.length > 0)) && (
+                      {expanded === sale.id && (sale.set_hours > 0 || sale.category === 'exhibition' || (sale.items && sale.items.length > 0) || (sale.food_items && sale.food_items.length > 0)) && (
                         <tr key={`${sale.id}-items`} className="bg-gray-950">
                           <td colSpan={user?.role === 'owner' ? 11 : 10} className="px-4 py-2">
                             <div className="pl-4 border-l-2 border-gray-800 space-y-1">
@@ -282,7 +362,11 @@ export default function SalesHistory() {
                                   <div className="flex justify-between text-xs text-gray-400 py-0.5">
                                     <span>Prepaid Duration</span>
                                     <span className="text-gray-300">
-                                      {sale.set_hours >= 1 ? `${Math.floor(sale.set_hours)}h${sale.set_hours % 1 > 0 ? ` ${Math.round((sale.set_hours % 1) * 60)}m` : ''}` : `${Math.round(sale.set_hours * 60)}m`}
+                                      {sale.set_hours >= 1 
+                                        ? `${Math.floor(sale.set_hours)}h${sale.set_hours % 1 > 0 ? ` ${Math.round((sale.set_hours % 1) * 60)}m` : ''}` 
+                                        : sale.set_hours * 60 >= 1
+                                          ? `${Math.round(sale.set_hours * 60)}m`
+                                          : `${Math.round(sale.set_hours * 3600)}s`}
                                     </span>
                                   </div>
                                   <div className="flex justify-between text-xs text-gray-400 py-0.5">
@@ -291,27 +375,44 @@ export default function SalesHistory() {
                                   </div>
                                 </div>
                               )}
-                              {sale.items && sale.items.length > 0 && (
+                              {sale.category === 'exhibition' && (
                                 <div>
-                                  <p className="text-xs text-gray-500 uppercase tracking-wider font-semibold mb-1">Food Items</p>
-                                  {sale.items.map(item => (
-                                    <div key={item.id} className={`flex justify-between items-center text-xs py-1 ${item.voided ? 'opacity-40 line-through' : 'text-gray-400'}`}>
-                                      <span>{item.food_name}{item.flavor_name ? ` - ${item.flavor_name}` : ''} × {item.quantity} {item.voided && <span className="text-red-400 no-underline font-bold ml-1">VOIDED</span>}</span>
-                                      <div className="flex items-center gap-2">
-                                        <span className={item.voided ? 'text-gray-600' : 'text-gray-300'}>₱{(item.price * item.quantity).toFixed(2)}</span>
-                                        {!item.voided && (
-                                          <button
-                                            onClick={(e) => { e.stopPropagation(); openVoidModal(sale.id, item); }}
-                                            className="px-2 py-1 text-[10px] font-bold bg-red-600 text-white border border-red-500 rounded hover:bg-red-500 transition-colors"
-                                          >
-                                            VOID
-                                          </button>
-                                        )}
-                                      </div>
-                                    </div>
-                                  ))}
+                                  <p className="text-xs text-gray-500 uppercase tracking-wider font-semibold mb-1">Exhibition Match</p>
+                                  <div className="text-xs text-gray-400 py-0.5">
+                                    <span className="text-gray-300">{sale.details || 'Table Fee'}</span>
+                                  </div>
+                                  <div className="flex justify-between text-xs text-gray-400 py-0.5">
+                                    <span>Table Fee</span>
+                                    <span className="text-gray-300">₱{parseFloat(sale.table_cost || 0).toFixed(2)}</span>
+                                  </div>
                                 </div>
                               )}
+                              {(() => {
+                                // Get items from either sale_items collection or food_items array in sale doc
+                                const items = (sale.items && sale.items.length > 0) ? sale.items : (sale.food_items || []);
+                                if (items.length === 0) return null;
+                                return (
+                                  <div>
+                                    <p className="text-xs text-gray-500 uppercase tracking-wider font-semibold mb-1">Food Items</p>
+                                    {items.map((item, idx) => (
+                                      <div key={item.id || idx} className={`flex justify-between items-center text-xs py-1 ${item.voided ? 'opacity-40 line-through' : 'text-gray-400'}`}>
+                                        <span>{item.food_name}{item.flavor_name && !item.food_name.includes(item.flavor_name) ? ` - ${item.flavor_name}` : ''} × {item.quantity}{item.voided ? <span className="text-red-400 no-underline font-bold ml-1"> VOIDED</span> : ''}</span>
+                                        <div className="flex items-center gap-2">
+                                          <span className={item.voided ? 'text-gray-600' : 'text-gray-300'}>₱{(item.price * item.quantity).toFixed(2)}</span>
+                                          {sale.items && sale.items.length > 0 && !item.voided && (
+                                            <button
+                                              onClick={(e) => { e.stopPropagation(); openVoidModal(sale.id, item); }}
+                                              className="px-2 py-1 text-[10px] font-bold bg-red-600 text-white border border-red-500 rounded hover:bg-red-500 transition-colors"
+                                            >
+                                              VOID
+                                            </button>
+                                          )}
+                                        </div>
+                                      </div>
+                                    ))}
+                                  </div>
+                                );
+                              })()}
                             </div>
                           </td>
                         </tr>
@@ -482,13 +583,15 @@ export default function SalesHistory() {
                   if (newPw !== confirmPw) { setPwError('Passwords do not match'); return; }
                   setPwSaving(true); setPwError('');
                   try {
-                    await axios.post('/api/auth/void-password', { password: newPw }, h);
+                    // Update void password in Firestore for current user
+                    const userRef = doc(db, 'users', user.id);
+                    await updateDoc(userRef, { void_password: newPw });
                     setVoidPwSet(true);
                     setShowPwSetup(false);
                     setToast('Void password set successfully');
                     setTimeout(() => setToast(''), 3000);
                   } catch (err) {
-                    setPwError(err.response?.data?.error || 'Failed to save password');
+                    setPwError(err.message || 'Failed to save password');
                   } finally {
                     setPwSaving(false);
                   }
@@ -616,13 +719,22 @@ export default function SalesHistory() {
           data={{
             table_number: viewReceipt.table_number,
             table_cost: viewReceipt.table_cost,
-            food_items: viewReceipt.items,
-            food_total: viewReceipt.food_total,
+            food_items: (viewReceipt.items && viewReceipt.items.length > 0) ? viewReceipt.items : (viewReceipt.food_items || []),
+            food_total: viewReceipt.food_total || (viewReceipt.food_items ? viewReceipt.food_items.reduce((sum, i) => sum + (i.price * i.quantity), 0) : 0) || (viewReceipt.items ? viewReceipt.items.reduce((sum, i) => sum + (i.price * i.quantity), 0) : 0),
             total: viewReceipt.total,
             received: parseFloat(viewReceipt.received || viewReceipt.total || 0),
             change: parseFloat(viewReceipt.received || viewReceipt.total || 0) - parseFloat(viewReceipt.total),
             cashier: viewReceipt.cashier,
             sale_date: viewReceipt.end_time || viewReceipt.date,
+            payment_mode: viewReceipt.payment_mode,
+            // Table time details
+            set_hours: viewReceipt.set_hours,
+            start_time: viewReceipt.start_time,
+            end_time: viewReceipt.end_time,
+            elapsed_seconds: viewReceipt.elapsed_seconds || (viewReceipt.set_hours ? viewReceipt.set_hours * 3600 : 0),
+            // Exhibition match details
+            category: viewReceipt.category,
+            details: viewReceipt.details,
           }}
           onClose={() => setViewReceipt(null)}
         />

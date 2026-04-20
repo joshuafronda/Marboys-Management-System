@@ -2,14 +2,15 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
-import axios from 'axios';
+import { auth, db } from '../firebase';
+import { signInWithEmailAndPassword } from 'firebase/auth';
+import { doc, setDoc, getDoc } from 'firebase/firestore';
 
 export default function LoginPage() {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
-  const { login } = useAuth();
   const { theme, toggleTheme } = useTheme();
   const navigate = useNavigate();
 
@@ -18,17 +19,32 @@ export default function LoginPage() {
     setError('');
     setLoading(true);
 
-    try {
-      const res = await axios.post('/api/auth/login', { username, password });
-      login(res.data.token, res.data.user);
+    const email = username.includes('@') ? username : `${username}@pos.com`;
 
-      if (res.data.user.role === 'owner') {
+    try {
+      await signInWithEmailAndPassword(auth, email, password);
+
+      const role = email === 'owner@pos.com' ? 'owner' : 'admin';
+      
+      // Ensure user document exists in Firestore
+      const userRef = doc(db, 'users', auth.currentUser.uid);
+      const userSnap = await getDoc(userRef);
+      if (!userSnap.exists()) {
+        await setDoc(userRef, {
+          email: email,
+          name: username,
+          role: role,
+          created_at: new Date().toISOString()
+        });
+      }
+      
+      if (role === 'owner') {
         navigate('/owner/dashboard');
       } else {
         navigate('/admin/dashboard');
       }
     } catch (err) {
-      setError(err.response?.data?.error || 'Login failed. Please try again.');
+      setError(err.message || 'Login failed. Please try again.');
     } finally {
       setLoading(false);
     }

@@ -1,4 +1,9 @@
 node_modules/
 client/node_modules/
 .env
+client/.env
 dist/
+
+# Environment files with secrets
+.env.local
+.env.*.local

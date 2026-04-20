@@ -1,7 +1,8 @@
 import { useState, useEffect, useCallback } from 'react';
 import Layout from '../components/Layout';
 import Receipt from '../components/Receipt';
-import axios from 'axios';
+import { collection, doc, updateDoc, writeBatch, increment, onSnapshot, getDocs } from 'firebase/firestore';
+import { db } from '../firebase';
 import { useAuth } from '../context/AuthContext';
 
 const FOOD_CATEGORIES = [
@@ -39,37 +40,28 @@ export default function POSPage() {
   const [categoryFilter, setCategoryFilter] = useState('');
   const [flavorModal, setFlavorModal] = useState(null); // food object when flavor selector is open
   const [errorModal, setErrorModal] = useState(''); // error message for styled modal
-
-  const h = { headers: { Authorization: `Bearer ${token}` } };
-
-  const fetchFoods = useCallback(async () => {
-    try {
-      const res = await axios.get('/api/foods', h);
-      setFoods(res.data);
-    } catch (err) {
-      console.error(err);
-    }
-  }, [token]);
-
-  const fetchTables = useCallback(async () => {
-    try {
-      const res = await axios.get('/api/tables', h);
-      setTables(res.data);
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setLoading(false);
-    }
-  }, [token]);
+  const [voidItemModal, setVoidItemModal] = useState(null); // { foodId, flavorName, foodName, quantity, onConfirm }
+  const [paymentMode, setPaymentMode] = useState('Cash'); // payment method
+  const [toast, setToast] = useState(''); // success/error message toast
 
   useEffect(() => {
-    fetchFoods();
-    fetchTables();
-    const interval = setInterval(fetchTables, 10000);
-    return () => clearInterval(interval);
+    const unsubFoods = onSnapshot(collection(db, 'foods'), (snap) => {
+      setFoods(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+    }, (err) => console.error(err));
+
+    const unsubTables = onSnapshot(collection(db, 'tables'), (snap) => {
+      const tb = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      setTables(tb.sort((a,b) => a.table_number - b.table_number));
+      setLoading(false);
+    }, (err) => console.error(err));
+
+    return () => {
+      unsubFoods();
+      unsubTables();
+    };
   }, []);
 
-  // Load cart from table when selecting a table
+  // Load cart from table or localStorage when selecting
   useEffect(() => {
     if (selectedTableId) {
       const table = tables.find(t => t.id === parseInt(selectedTableId));
@@ -79,18 +71,32 @@ export default function POSPage() {
         setCart([]);
       }
     } else {
-      setCart([]);
+      // Walk-in: load from localStorage (survives restart)
+      const saved = localStorage.getItem('pos_walkin_cart');
+      if (saved) {
+        try {
+          setCart(JSON.parse(saved));
+        } catch {
+          setCart([]);
+        }
+      } else {
+        setCart([]);
+      }
     }
     setReceived('');
   }, [selectedTableId]);
 
-  // Save cart to server when it changes and a table is selected
+  // Save cart to server (tables) or localStorage (walk-in)
   const saveCartToServer = async (tableId, items) => {
-    try {
-      await axios.put(`/api/tables/${tableId}/cart`, { cart_items: items }, h);
-      fetchFoods(); // refresh stock display
-    } catch (err) {
-      console.error('Failed to save cart:', err);
+    if (tableId) {
+      try {
+        await updateDoc(doc(db, 'tables', tableId.toString()), { cart_items: items });
+      } catch (err) {
+        console.error('Failed to save cart:', err);
+      }
+    } else {
+      // Walk-in: persist to localStorage
+      localStorage.setItem('pos_walkin_cart', JSON.stringify(items));
     }
   };
 
@@ -110,7 +116,7 @@ export default function POSPage() {
         return sum + (found ? found.quantity : 0);
       }, 0);
       const inPosCart = cart.find(i => i.food_id === foodId && i.flavor_name === flavorName)?.quantity || 0;
-      return flavor.stock - inOtherTableCarts - inPosCart;
+      return (flavor.available ?? flavor.stock) - inOtherTableCarts - inPosCart;
     }
     
     // No flavors - use total stock
@@ -144,7 +150,6 @@ export default function POSPage() {
 
   const addToCart = (food, flavorName) => {
     setCart(prev => {
-      const cartKey = flavorName ? `${food.id}-${flavorName}` : String(food.id);
       const existing = prev.find(i => 
         flavorName ? (i.food_id === food.id && i.flavor_name === flavorName) : (i.food_id === food.id && !i.flavor_name)
       );
@@ -171,7 +176,7 @@ export default function POSPage() {
           flavor_name: flavorName || null,
         }];
       }
-      if (selectedTableId) saveCartToServer(parseInt(selectedTableId), next);
+      saveCartToServer(selectedTableId ? parseInt(selectedTableId) : null, next);
       return next;
     });
   };
@@ -181,9 +186,57 @@ export default function POSPage() {
       const next = prev.filter(i => 
         flavorName ? !(i.food_id === foodId && i.flavor_name === flavorName) : i.food_id !== foodId
       );
-      if (selectedTableId) saveCartToServer(parseInt(selectedTableId), next);
+      saveCartToServer(selectedTableId ? parseInt(selectedTableId) : null, next);
       return next;
     });
+  };
+
+  // Handle quantity decrease — void auth required when removing last item (any role)
+  const handleDecreaseQty = (foodId, flavorName) => {
+    const item = cart.find(i =>
+      flavorName ? (i.food_id === foodId && i.flavor_name === flavorName) : i.food_id === foodId
+    );
+    if (!item) return;
+
+    if (item.quantity === 1) {
+      // Removing the last piece = void → owner password always required
+      setVoidItemModal({
+        foodId,
+        flavorName,
+        foodName: item.food_name,
+        quantity: 1,
+        onConfirm: (password) => confirmVoidAndRemove(foodId, flavorName, password),
+      });
+    } else {
+      adjustQty(foodId, -1, flavorName);
+    }
+  };
+
+  // Verify owner password and remove the item
+  const confirmVoidAndRemove = async (foodId, flavorName, password) => {
+    try {
+      // Check void password from Firestore users collection
+      const usersSnap = await getDocs(collection(db, 'users'));
+      const ownerDoc = usersSnap.docs.find(d => d.data().role === 'owner' && d.data().void_password === password);
+      
+      if (!ownerDoc) {
+        setVoidItemModal(null);
+        setErrorModal('Incorrect owner password');
+        return;
+      }
+      
+      setCart(prev => {
+        const next = prev.filter(i =>
+          flavorName ? !(i.food_id === foodId && i.flavor_name === flavorName) : i.food_id !== foodId
+        );
+        saveCartToServer(selectedTableId ? parseInt(selectedTableId) : null, next);
+        return next;
+      });
+      setVoidItemModal(null);
+    } catch (err) {
+      console.error(err);
+      setErrorModal('Failed to remove item');
+    }
   };
 
   const adjustQty = (foodId, delta, flavorName) => {
@@ -195,7 +248,7 @@ export default function POSPage() {
         if (delta > 0 && avail <= 0) { setErrorModal(`No more stock available.`); return i; }
         return newQty <= 0 ? null : { ...i, quantity: newQty };
       }).filter(Boolean);
-      if (selectedTableId) saveCartToServer(parseInt(selectedTableId), next);
+      saveCartToServer(selectedTableId ? parseInt(selectedTableId) : null, next);
       return next;
     });
   };
@@ -213,23 +266,68 @@ export default function POSPage() {
 
     setPaying(true);
     try {
+      const batch = writeBatch(db);
+      const now = new Date().toISOString();
+
+      const foodTotal = cart.reduce((sum, item) => sum + (item.price * item.quantity), 0);
       const salePayload = {
         table_number: selectedTable ? selectedTable.table_number : null,
         start_time: selectedTable?.start_time || null,
-        end_time: new Date().toISOString(),
+        end_time: now,
         table_cost: tableCost,
+        food_total: foodTotal,
         food_items: cart,
+        total: grandTotal,
         received: parseFloat(received) || 0,
+        payment_mode: paymentMode,
+        category: selectedTableId ? 'table' : 'takeout',
+        cashier: user.name,
+        created_at: now
       };
-      const res = await axios.post('/api/sales', salePayload, h);
+
+      const saleRef = doc(collection(db, 'sales'));
+      batch.set(saleRef, salePayload);
+
+      // Deduct food stocks
+      for (const item of cart) {
+        if (!item.food_id) continue;
+        const foodDocRef = doc(db, 'foods', item.food_id.toString());
+        const foodDoc = foods.find(f => f.id === item.food_id.toString());
+        
+        if (foodDoc) {
+          if (item.flavor_name && foodDoc.flavors) {
+             const newFlavors = [...foodDoc.flavors];
+             const fIdx = newFlavors.findIndex(fl => fl.flavor_name === item.flavor_name);
+             if (fIdx !== -1) {
+                newFlavors[fIdx].stock = Math.max(0, (newFlavors[fIdx].stock || 0) - item.quantity);
+                const sum = newFlavors.reduce((a, b) => a + (b.stock || 0), 0);
+                batch.update(foodDocRef, { flavors: newFlavors, stock: sum });
+             }
+          } else {
+             batch.update(foodDocRef, { stock: increment(-item.quantity) });
+          }
+        }
+      }
 
       // If table order, reset the table
       if (selectedTableId) {
-        await axios.post(`/api/tables/${selectedTableId}/reset`, {}, h);
+        batch.update(doc(db, 'tables', selectedTableId.toString()), {
+          status: 'available',
+          start_time: null,
+          end_time: null,
+          elapsed_seconds: 0,
+          cost: 0,
+          accumulated_seconds: 0,
+          set_hours: 0,
+          cart_items: [],
+          custom_fee: null
+        });
       }
 
+      await batch.commit();
+
       setReceipt({
-        ...res.data,
+        id: saleRef.id,
         table_number: selectedTable ? selectedTable.table_number : null,
         table_cost: tableCost,
         food_items: cart,
@@ -238,15 +336,22 @@ export default function POSPage() {
         received: parseFloat(received),
         change: parseFloat(received) - grandTotal,
         cashier: user.name,
+        payment_mode: paymentMode,
+        created_at: now
       });
 
-      fetchFoods();
-      fetchTables();
       setCart([]);
       setReceived('');
       setSelectedTableId('');
+      setPaymentMode('Cash');
+      
+      // Clear walk-in cart from localStorage after payment
+      if (!selectedTableId) {
+        localStorage.removeItem('pos_walkin_cart');
+      }
     } catch (err) {
-      setErrorModal(err.response?.data?.error || 'Checkout failed');
+      console.error(err);
+      setErrorModal('Checkout failed: ' + err.message);
     } finally {
       setPaying(false);
     }
@@ -372,13 +477,13 @@ export default function POSPage() {
                     <div key={`${item.food_id}-${item.flavor_name || 'none'}-${idx}`} className="border-b border-gray-800 pb-3">
                       <div className="flex justify-between items-start mb-1">
                         <p className="text-white text-sm font-medium flex-1 mr-2">{item.food_name}</p>
-                        <button onClick={() => removeFromCart(item.food_id, item.flavor_name)} className="text-gray-600 hover:text-white text-lg leading-none">×</button>
                       </div>
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-2">
                           <button
-                            onClick={() => adjustQty(item.food_id, -1, item.flavor_name)}
+                            onClick={() => handleDecreaseQty(item.food_id, item.flavor_name)}
                             className="w-7 h-7 border border-gray-700 rounded text-gray-400 hover:text-white hover:border-gray-500 flex items-center justify-center"
+                            title={item.quantity === 1 ? 'Void item (Owner only)' : 'Decrease quantity'}
                           >−</button>
                           <span className="text-white font-bold w-6 text-center">{item.quantity}</span>
                           <button
@@ -413,6 +518,34 @@ export default function POSPage() {
                       <span className="text-white">TOTAL</span>
                       <span className="text-white">₱{grandTotal.toFixed(2)}</span>
                     </div>
+
+                    {/* Payment Mode */}
+                    <label className="block text-xs text-gray-400 uppercase tracking-wider font-semibold mb-2">
+                      Payment Mode
+                    </label>
+                    <div className="flex gap-2 mb-3">
+                      {/* Cash */}
+                      <button
+                        type="button"
+                        onClick={() => setPaymentMode('Cash')}
+                        className={`flex-1 p-2 rounded-lg border-2 text-xs font-bold transition-all ${
+                          paymentMode === 'Cash'
+                            ? 'border-blue-500 bg-blue-500 text-white'
+                            : 'border-gray-700 text-gray-400 hover:border-gray-500 hover:text-white'
+                        }`}
+                      >Cash</button>
+                      {/* GCash */}
+                      <button
+                        type="button"
+                        onClick={() => setPaymentMode('GCash')}
+                        className={`flex-1 p-2 rounded-lg border-2 text-xs font-bold transition-all ${
+                          paymentMode === 'GCash'
+                            ? 'border-blue-500 bg-blue-500 text-white'
+                            : 'border-gray-700 text-gray-400 hover:border-gray-500 hover:text-white'
+                        }`}
+                      >GCash</button>
+                    </div>
+
                     <label className="block text-xs text-gray-400 uppercase tracking-wider font-semibold mb-2">
                       Amount Received
                     </label>
@@ -433,8 +566,15 @@ export default function POSPage() {
                   <button
                     id="checkout-btn"
                     className="btn-primary w-full py-3"
-                    onClick={handleCheckout}
-                    disabled={paying || !received}
+                    onClick={() => {
+                      if (!received || parseFloat(received) <= 0) {
+                        setToast('Please enter amount received');
+                        setTimeout(() => setToast(''), 2000);
+                        return;
+                      }
+                      handleCheckout();
+                    }}
+                    disabled={paying}
                   >
                     {paying ? 'Processing...' : 'Complete Payment'}
                   </button>
@@ -502,6 +642,108 @@ export default function POSPage() {
           </div>
         </div>
       )}
+
+      {/* Void Item Authorization Modal (Owner only) */}
+      {voidItemModal && (
+        <VoidItemModal
+          itemName={voidItemModal.foodName}
+          quantity={voidItemModal.quantity}
+          onCancel={() => setVoidItemModal(null)}
+          onConfirm={voidItemModal.onConfirm}
+        />
+      )}
+
+      {/* Toast Notification */}
+      {toast && (
+        <div className="fixed top-20 left-1/2 -translate-x-1/2 z-[70] bg-black text-white px-5 py-2.5 rounded-lg text-sm font-bold shadow-lg">
+          {toast}
+        </div>
+      )}
     </Layout>
+  );
+}
+
+// ─── Void Item Modal Component ──────────────────────────────────────────────
+function VoidItemModal({ itemName, quantity, onCancel, onConfirm }) {
+  const [password, setPassword] = useState('');
+  const [verifying, setVerifying] = useState(false);
+  const [localError, setLocalError] = useState('');
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (!password) return;
+    setVerifying(true);
+    setLocalError('');
+    try {
+      await onConfirm(password);
+    } catch {
+      // errors handled by parent via setErrorModal
+    } finally {
+      setVerifying(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/90 backdrop-blur-sm flex items-center justify-center z-[80] p-4">
+      <div className="bg-gray-900 border border-gray-800 rounded-2xl max-w-sm w-full overflow-hidden shadow-2xl">
+        {/* Header */}
+        <div className="bg-black px-6 py-5 text-center border-b border-gray-800">
+          <div className="w-14 h-14 mx-auto mb-3 rounded-full bg-white/10 flex items-center justify-center">
+            <svg className="w-8 h-8 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+            </svg>
+          </div>
+          <h2 className="text-xl font-black text-white">Owner Authorization</h2>
+          <p className="text-gray-400 text-sm mt-1">This action requires manager authorization.</p>
+        </div>
+
+        {/* Body */}
+        <div className="px-6 py-5 space-y-4">
+          <h2 className="text-lg font-black text-white mb-2 text-center">Remove Item</h2>
+          <p className="text-gray-400 text-sm mb-6 text-center">
+            Remove {quantity} × {itemName}?<br />
+            <span className="text-red-400">This action requires manager authorization.</span>
+          </p>
+
+          {localError && (
+            <div className="bg-red-900/30 border border-red-800 rounded-lg p-3 text-red-400 text-xs">
+              {localError}
+            </div>
+          )}
+
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div>
+              <label className="block text-xs text-gray-500 uppercase tracking-wider mb-2">Owner Password</label>
+              <input
+                type="password"
+                value={password}
+                onChange={e => setPassword(e.target.value)}
+                placeholder="Enter owner password"
+                className="input w-full"
+                autoFocus
+              />
+            </div>
+
+            <div className="flex gap-3">
+              <button
+                type="button"
+                onClick={onCancel}
+                disabled={verifying}
+                className="flex-1 btn-outline py-2"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={verifying || !password}
+                className="flex-1 btn-primary py-2 bg-red-600 hover:bg-red-700"
+              >
+                {verifying ? 'Verifying...' : 'Remove Item'}
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
   );
 }

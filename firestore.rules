@@ -1,0 +1,77 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Helper Functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'owner';
+    }
+
+    // 1. Users Collection
+    match /users/{userId} {
+      // Any authenticated user can read user documents (needed for role checks)
+      allow read: if isAuthenticated();
+
+      // Allow user to create/update their own profile (used for auto-seed logic)
+      allow write: if isAuthenticated() && request.auth.uid == userId;
+    }
+
+    // 2. Tables Collection
+    match /tables/{tableId} {
+      // Both Owners and Admins can view and operate tables
+      allow read, write: if isAuthenticated();
+    }
+
+    // 3. Sales
+    match /sales/{saleId} {
+      // Everyone can read and create sales
+      allow read, create, update: if isAuthenticated();
+      // Only owners can delete entire sales
+      allow delete: if isOwner();
+    }
+
+    // 4. Sale Items (top-level collection - backend stores items separately)
+    match /sale_items/{itemId} {
+      allow read, write: if isAuthenticated();
+    }
+
+    // 5. Foods & Inventory
+    match /foods/{foodId} {
+      // Everyone can read foods to process POS
+      allow read: if isAuthenticated();
+      // Allow stock updates (for checkout deductions) by any authenticated user
+      allow update: if isAuthenticated();
+      // Only owners can create or delete foods
+      allow create, delete: if isOwner();
+    }
+
+    match /daily_stock_inventory/{inventoryId} {
+      allow read: if isAuthenticated();
+      allow write: if isOwner();
+    }
+
+    // 6. Extension History
+    match /extension_history/{historyId} {
+      allow read, write: if isAuthenticated();
+    }
+
+    // 7. Void Logs
+    match /void_logs/{logId} {
+      allow read, write: if isAuthenticated();
+    }
+
+    // 8. Counters (backend-only via Admin SDK, rules block client access)
+    match /_counters/{counterId} {
+      allow read, write: if false;
+    }
+
+    // Default fallback - deny all
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

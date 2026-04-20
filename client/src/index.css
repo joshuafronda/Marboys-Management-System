@@ -38,9 +38,9 @@
   --badge-paused-bg: #2a2a2a;
   --badge-paused-text: #a0a0a0;
   --badge-paused-border: #3a3a3a;
-  --badge-finished-bg: #2a1a1a;
-  --badge-finished-text: #cf9f6f;
-  --badge-finished-border: #4a2a2a;
+  --badge-finished-bg: #450a0a;
+  --badge-finished-text: #dc2626;
+  --badge-finished-border: #991b1b;
   --badge-exhibition-bg: #ffffff;
   --badge-exhibition-text: #000000;
   --badge-exhibition-border: #333333;
@@ -98,9 +98,9 @@
   --badge-paused-bg: #e0e0e0;
   --badge-paused-text: #666666;
   --badge-paused-border: #c0c0c0;
-  --badge-finished-bg: #f5ebe0;
-  --badge-finished-text: #8a6530;
-  --badge-finished-border: #d4b88a;
+  --badge-finished-bg: #fef2f2;
+  --badge-finished-text: #dc2626;
+  --badge-finished-border: #f87171;
   --badge-exhibition-bg: #000000;
   --badge-exhibition-text: #ffffff;
   --badge-exhibition-border: #333333;
@@ -389,6 +389,53 @@ input[type="date"]::-webkit-calendar-picker-indicator {
 @keyframes fadeIn {
   from { opacity: 0; transform: translateY(6px); }
   to { opacity: 1; transform: translateY(0); }
+}
+
+/* Table card animations */
+@keyframes pulse-green {
+  0%, 100% { 
+    box-shadow: 0 0 15px rgba(34, 197, 94, 0.5);
+    border-color: rgba(34, 197, 94, 0.8);
+  }
+  50% { 
+    box-shadow: 0 0 25px rgba(34, 197, 94, 0.8);
+    border-color: rgba(34, 197, 94, 1);
+  }
+}
+
+@keyframes ring-pulse {
+  0%, 100% { 
+    box-shadow: 0 0 20px rgba(245, 158, 11, 0.6);
+    ring-width: 2px;
+  }
+  50% { 
+    box-shadow: 0 0 35px rgba(245, 158, 11, 0.9);
+    ring-width: 4px;
+  }
+}
+
+.animate-pulse-green {
+  animation: pulse-green 1.5s ease-in-out infinite;
+}
+
+.animate-ring {
+  animation: ring-pulse 1s ease-in-out infinite;
+}
+
+/* Light red pulse for finished tables - border only */
+@keyframes pulse-light-red {
+  0%, 100% { 
+    box-shadow: 0 0 20px rgba(248, 113, 113, 0.5);
+    border-color: rgba(248, 113, 113, 0.7);
+  }
+  50% { 
+    box-shadow: 0 0 40px rgba(248, 113, 113, 0.9);
+    border-color: rgba(248, 113, 113, 1);
+  }
+}
+
+.animate-pulse-light {
+  animation: pulse-light-red 1.2s ease-in-out infinite;
 }
 
 /* Print styles */

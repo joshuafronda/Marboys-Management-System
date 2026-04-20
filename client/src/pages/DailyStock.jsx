@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import Layout from '../components/Layout';
-import axios from 'axios';
+import { collection, doc, getDoc, getDocs, setDoc, updateDoc, deleteDoc, writeBatch, increment } from 'firebase/firestore';
+import { db } from '../firebase';
 import { useAuth } from '../context/AuthContext';
 import { Plus, Edit2, Trash2, Calendar, Package } from 'lucide-react';
 
@@ -26,8 +27,13 @@ export default function DailyStock() {
 
   const fetchRecords = async () => {
     try {
-      const res = await axios.get('/api/daily-stock', h);
-      setRecords(res.data);
+      const snap = await getDocs(collection(db, 'daily_stock_inventory'));
+      const fetched = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      fetched.sort((a, b) => {
+        if (a.stock_date !== b.stock_date) return b.stock_date.localeCompare(a.stock_date);
+        return (b.created_at || '').localeCompare(a.created_at || '');
+      });
+      setRecords(fetched);
     } catch (err) {
       console.error(err);
     } finally {
@@ -37,8 +43,10 @@ export default function DailyStock() {
 
   const fetchFoods = async () => {
     try {
-      const res = await axios.get('/api/foods', h);
-      setFoods(res.data);
+      const snap = await getDocs(collection(db, 'foods'));
+      const fetched = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      const sorted = fetched.sort((a, b) => a.name.localeCompare(b.name));
+      setFoods(sorted);
     } catch (err) {
       console.error(err);
     }
@@ -51,21 +59,79 @@ export default function DailyStock() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    const payload = {
-      food_id: parseInt(formData.food_id),
-      food_name: formData.food_name,
-      flavor_name: formData.flavor_name || null,
-      added_stock: parseInt(formData.added_stock),
-      stock_date: formData.stock_date,
-      notes: formData.notes || null,
-    };
-
+    const parsedAdded = parseInt(formData.added_stock) || 0;
+    
     try {
+      const batch = writeBatch(db);
+
       if (editingRecord) {
-        await axios.put(`/api/daily-stock/${editingRecord.id}`, payload, h);
+        batch.update(doc(db, 'daily_stock_inventory', editingRecord.id), {
+          added_stock: parsedAdded,
+          stock_date: formData.stock_date,
+          notes: formData.notes || null,
+        });
+
+        const diff = parsedAdded - editingRecord.added_stock;
+        if (diff !== 0) {
+           const foodDocRef = doc(db, 'foods', formData.food_id);
+           const foodDoc = await getDoc(foodDocRef);
+           if (foodDoc.exists()) {
+             const fData = foodDoc.data();
+             let newStock = fData.stock + diff;
+             if (formData.flavor_name) {
+                const newFlavors = fData.flavors || [];
+                const mIdx = newFlavors.findIndex(fl => fl.flavor_name === formData.flavor_name);
+                if (mIdx !== -1) {
+                  newFlavors[mIdx].stock = (newFlavors[mIdx].stock || 0) + diff;
+                  const sum = newFlavors.reduce((a, b) => a + (b.stock || 0), 0);
+                  batch.update(foodDocRef, { flavors: newFlavors, stock: sum });
+                }
+             } else {
+                batch.update(foodDocRef, { stock: increment(diff) });
+             }
+           }
+        }
       } else {
-        await axios.post('/api/daily-stock', payload, h);
+        const newRef = doc(collection(db, 'daily_stock_inventory'));
+        batch.set(newRef, {
+          food_id: formData.food_id,
+          food_name: formData.food_name,
+          flavor_name: formData.flavor_name || null,
+          added_stock: parsedAdded,
+          stock_date: formData.stock_date,
+          notes: formData.notes || null,
+          created_at: new Date().toISOString()
+        });
+
+        const foodDocRef = doc(db, 'foods', formData.food_id);
+        const foodDoc = await getDoc(foodDocRef);
+        if (foodDoc.exists()) {
+           const fData = foodDoc.data();
+           let newStock = (fData.stock || 0) + parsedAdded;
+           if (formData.flavor_name) {
+              const newFlavors = fData.flavors || [];
+              const mIdx = newFlavors.findIndex(fl => fl.flavor_name === formData.flavor_name);
+              if (mIdx !== -1) {
+                newFlavors[mIdx].stock = (newFlavors[mIdx].stock || 0) + parsedAdded;
+                const sum = newFlavors.reduce((a, b) => a + (b.stock || 0), 0);
+                if (fData.status === 'unavailable' && sum > 0) {
+                   batch.update(foodDocRef, { flavors: newFlavors, stock: sum, status: 'available' });
+                } else {
+                   batch.update(foodDocRef, { flavors: newFlavors, stock: sum });
+                }
+              }
+           } else {
+              if (fData.status === 'unavailable' && newStock > 0) {
+                 batch.update(foodDocRef, { stock: increment(parsedAdded), status: 'available' });
+              } else {
+                 batch.update(foodDocRef, { stock: increment(parsedAdded) });
+              }
+           }
+        }
       }
+
+      await batch.commit();
+
       fetchRecords();
       closeModal();
     } catch (err) {
@@ -90,7 +156,30 @@ export default function DailyStock() {
   const handleDelete = async (id) => {
     if (!confirm('Are you sure you want to delete this record?')) return;
     try {
-      await axios.delete(`/api/daily-stock/${id}`, h);
+      const record = records.find(r => r.id === id);
+      if (!record) return;
+
+      const batch = writeBatch(db);
+      batch.delete(doc(db, 'daily_stock_inventory', id));
+
+      const foodDocRef = doc(db, 'foods', record.food_id);
+      const foodDoc = await getDoc(foodDocRef);
+      if (foodDoc.exists()) {
+        const fData = foodDoc.data();
+        if (record.flavor_name) {
+          const newFlavors = fData.flavors || [];
+          const mIdx = newFlavors.findIndex(fl => fl.flavor_name === record.flavor_name);
+          if (mIdx !== -1) {
+            newFlavors[mIdx].stock = Math.max(0, (newFlavors[mIdx].stock || 0) - record.added_stock);
+            const sum = newFlavors.reduce((a, b) => a + (b.stock || 0), 0);
+            batch.update(foodDocRef, { flavors: newFlavors, stock: sum });
+          }
+        } else {
+          batch.update(foodDocRef, { stock: increment(-record.added_stock) });
+        }
+      }
+
+      await batch.commit();
       fetchRecords();
     } catch (err) {
       console.error(err);
@@ -112,7 +201,7 @@ export default function DailyStock() {
   };
 
   const handleFoodChange = (foodId) => {
-    const food = foods.find(f => f.id === parseInt(foodId));
+    const food = foods.find(f => f.id === foodId);
     if (food) {
       setFormData({
         ...formData,
@@ -265,7 +354,7 @@ export default function DailyStock() {
                   </select>
                 </div>
 
-                {formData.food_id && foods.find(f => f.id === parseInt(formData.food_id))?.flavors && (
+                {formData.food_id && foods.find(f => f.id === formData.food_id)?.flavors && (
                   <div>
                     <label className="block text-xs text-gray-400 uppercase tracking-wider font-semibold mb-2">Flavor</label>
                     <select
@@ -274,8 +363,8 @@ export default function DailyStock() {
                       className="input w-full"
                     >
                       <option value="">No flavor</option>
-                      {JSON.parse(foods.find(f => f.id === parseInt(formData.food_id))?.flavors || '[]').map((flavor, idx) => (
-                        <option key={idx} value={flavor.name}>{flavor.name}</option>
+                      {(foods.find(f => f.id === formData.food_id)?.flavors || []).map((flavor, idx) => (
+                        <option key={idx} value={flavor.flavor_name}>{flavor.flavor_name}</option>
                       ))}
                     </select>
                   </div>

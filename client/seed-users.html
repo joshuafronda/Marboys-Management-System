@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Seed Users - Marboys POS</title>
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+    import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
+    import { getFirestore, doc, setDoc } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+
+    const firebaseConfig = {
+      apiKey: "AIzaSyAQ19vX2V4uMJKuqshPAqrvWVo0KL8pGAk",
+      authDomain: "pos-marboys.firebaseapp.com",
+      projectId: "pos-marboys",
+      storageBucket: "pos-marboys.firebasestorage.app",
+      messagingSenderId: "620176464640",
+      appId: "1:620176464640:web:58330ba7d4f53236e4471f",
+      measurementId: "G-XYPSLRCDV1"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const auth = getAuth(app);
+    const db = getFirestore(app);
+
+    const users = [
+      {
+        email: 'owner@pos.com',
+        password: 'marboys2026',
+        name: 'Owner',
+        role: 'owner',
+        void_password: 'marboys2026'
+      },
+      {
+        email: 'admin@pos.com',
+        password: 'adminmarboys',
+        name: 'Admin',
+        role: 'admin'
+      }
+    ];
+
+    async function seedUsers() {
+      const results = document.getElementById('results');
+      results.innerHTML = '';
+
+      for (const user of users) {
+        try {
+          // Try to create user
+          const userCredential = await createUserWithEmailAndPassword(auth, user.email, user.password);
+          const uid = userCredential.user.uid;
+
+          // Save user data to Firestore
+          await setDoc(doc(db, 'users', uid), {
+            email: user.email,
+            name: user.name,
+            role: user.role,
+            void_password: user.void_password || null,
+            created_at: new Date().toISOString()
+          });
+
+          results.innerHTML += `<div style="color: green;">✓ Created ${user.role}: ${user.email}</div>`;
+        } catch (err) {
+          if (err.code === 'auth/email-already-in-use') {
+            // User exists, just update Firestore
+            try {
+              const userCredential = await signInWithEmailAndPassword(auth, user.email, user.password);
+              const uid = userCredential.user.uid;
+
+              await setDoc(doc(db, 'users', uid), {
+                email: user.email,
+                name: user.name,
+                role: user.role,
+                void_password: user.void_password || null,
+                updated_at: new Date().toISOString()
+              });
+
+              results.innerHTML += `<div style="color: orange;">⚠ Updated existing ${user.role}: ${user.email}</div>`;
+            } catch (signInErr) {
+              results.innerHTML += `<div style="color: red;">✗ ${user.role}: ${signInErr.message}</div>`;
+            }
+          } else {
+            results.innerHTML += `<div style="color: red;">✗ ${user.role}: ${err.message}</div>`;
+          }
+        }
+      }
+
+      results.innerHTML += '<br><div style="color: blue;">Done! You can close this window.</div>';
+    }
+
+    document.getElementById('seedBtn').addEventListener('click', seedUsers);
+  </script>
+  <style>
+    body {
+      font-family: system-ui, -apple-system, sans-serif;
+      background: #1a1a1a;
+      color: #fff;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 100vh;
+      margin: 0;
+    }
+    .container {
+      background: #2a2a2a;
+      padding: 2rem;
+      border-radius: 12px;
+      max-width: 500px;
+      width: 100%;
+    }
+    h1 {
+      margin: 0 0 1rem 0;
+      font-size: 1.5rem;
+    }
+    p {
+      color: #888;
+      margin-bottom: 1.5rem;
+    }
+    button {
+      width: 100%;
+      padding: 12px;
+      background: #fff;
+      color: #000;
+      border: none;
+      border-radius: 8px;
+      font-weight: bold;
+      cursor: pointer;
+      font-size: 1rem;
+    }
+    button:hover {
+      background: #e0e0e0;
+    }
+    #results {
+      margin-top: 1.5rem;
+      padding: 1rem;
+      background: #1a1a1a;
+      border-radius: 8px;
+      font-family: monospace;
+      font-size: 0.9rem;
+    }
+    .user-list {
+      margin: 1rem 0;
+      padding: 0;
+      list-style: none;
+    }
+    .user-list li {
+      padding: 0.5rem;
+      background: #333;
+      margin-bottom: 0.5rem;
+      border-radius: 4px;
+      font-size: 0.9rem;
+    }
+    .label {
+      color: #888;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Marboys POS - Seed Users</h1>
+    <p>This will create the following accounts in Firebase:</p>
+    <ul class="user-list">
+      <li>
+        <strong>Owner</strong><br>
+        <span class="label">Email:</span> owner@pos.com<br>
+        <span class="label">Password:</span> marboys2026
+      </li>
+      <li>
+        <strong>Admin</strong><br>
+        <span class="label">Email:</span> admin@pos.com<br>
+        <span class="label">Password:</span> adminmarboys
+      </li>
+    </ul>
+    <button id="seedBtn">Create Users</button>
+    <div id="results"></div>
+  </div>
+</body>
+</html>
