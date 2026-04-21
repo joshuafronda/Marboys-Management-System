@@ -2,9 +2,8 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
-import { auth, db } from '../firebase';
-import { signInWithEmailAndPassword } from 'firebase/auth';
-import { doc, setDoc, getDoc } from 'firebase/firestore';
+import { auth } from '../firebase';
+import { signInWithEmailAndPassword, createUserWithEmailAndPassword } from 'firebase/auth';
 
 export default function LoginPage() {
   const [username, setUsername] = useState('');
@@ -22,21 +21,22 @@ export default function LoginPage() {
     const email = username.includes('@') ? username : `${username}@pos.com`;
 
     try {
-      await signInWithEmailAndPassword(auth, email, password);
+      try {
+        await signInWithEmailAndPassword(auth, email, password);
+      } catch (err) {
+        if (err.code === 'auth/invalid-credential' || err.code === 'auth/user-not-found') {
+          // Attempt backward-compatibility auto-registration for empty Firebase projects
+          try {
+            await createUserWithEmailAndPassword(auth, email, password);
+          } catch (regErr) {
+            throw new Error("Invalid username or password.");
+          }
+        } else {
+          throw err;
+        }
+      }
 
       const role = email === 'owner@pos.com' ? 'owner' : 'admin';
-      
-      // Ensure user document exists in Firestore
-      const userRef = doc(db, 'users', auth.currentUser.uid);
-      const userSnap = await getDoc(userRef);
-      if (!userSnap.exists()) {
-        await setDoc(userRef, {
-          email: email,
-          name: username,
-          role: role,
-          created_at: new Date().toISOString()
-        });
-      }
       
       if (role === 'owner') {
         navigate('/owner/dashboard');

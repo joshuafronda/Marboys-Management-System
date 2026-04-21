@@ -2,15 +2,14 @@ import { initializeApp } from "firebase/app";
 import { getAuth } from "firebase/auth";
 import { getFirestore } from "firebase/firestore";
 
-// Firebase config from environment variables (Vite syntax)
-const firebaseConfig = {
-  apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
-  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
-  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
-  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
-  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
-  appId: import.meta.env.VITE_FIREBASE_APP_ID,
-  measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID
+export const firebaseConfig = {
+  apiKey: "AIzaSyBhrD70_CVYRodyHGTYmhgoo6yIw3nZYv8",
+  authDomain: "pos-marboys.firebaseapp.com",
+  projectId: "pos-marboys",
+  storageBucket: "pos-marboys.firebasestorage.app",
+  messagingSenderId: "238742939377",
+  appId: "1:238742939377:web:fce2ce1b67ff7b9abaab50",
+  measurementId: "G-8Z33F6D6SP"
 };
 
 // Initialize Firebase
