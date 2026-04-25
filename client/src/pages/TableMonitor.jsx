@@ -130,10 +130,10 @@ export default function TableMonitor() {
 
   useEffect(() => {
     seedTables().catch(console.error);
-    
+
     const unsubTables = onSnapshot(collection(db, 'tables'), (snap) => {
       const tb = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      const sorted = tb.sort((a,b) => a.table_number - b.table_number);
+      const sorted = tb.sort((a, b) => a.table_number - b.table_number);
       setTables(prev => {
         // Don't downgrade a table that was optimistically started (running→available race)
         return sorted.map(newT => {
@@ -150,7 +150,7 @@ export default function TableMonitor() {
           if (t.cart_items && t.cart_items.length > 0) {
             next[t.id] = t.cart_items;
           } else {
-             delete next[t.id];
+            delete next[t.id];
           }
         }
         return next;
@@ -159,8 +159,8 @@ export default function TableMonitor() {
     });
 
     const unsubFoods = onSnapshot(collection(db, 'foods'), (snap) => {
-       const fd = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-       setFoods(fd.filter(f => f.status === 'available'));
+      const fd = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      setFoods(fd.filter(f => f.status === 'available'));
     });
 
     const tickInterval = setInterval(() => setNow(Date.now()), 1000);
@@ -205,13 +205,13 @@ export default function TableMonitor() {
           // Just update tables array with server response
           setTables(prev => prev.map(t => t.id === targetTableId?.toString() ? { ...t, ...res } : t));
         } else if (selectedTable && selectedTable.id === targetTableId) {
-           setSelectedTable({ ...ttable, ...res });
+          setSelectedTable({ ...ttable, ...res });
         }
         if (action === 'extend') {
-           const extQ = query(collection(db, 'extension_history'), where('table_id', '==', targetTableId.toString()));
-           const extSnap = await getDocs(extQ);
-           const exts = extSnap.docs.map(d => d.data()).sort((a,b) => a.extended_at.localeCompare(b.extended_at));
-           setExtensionHistory(exts);
+          const extQ = query(collection(db, 'extension_history'), where('table_id', '==', targetTableId.toString()));
+          const extSnap = await getDocs(extQ);
+          const exts = extSnap.docs.map(d => d.data()).sort((a, b) => a.extended_at.localeCompare(b.extended_at));
+          setExtensionHistory(exts);
         }
       }
     } catch (err) {
@@ -224,7 +224,7 @@ export default function TableMonitor() {
   const handleStart = () => {
     const hours = parseFloat(startHours) || 0;
     const targetId = selectedTable?.id;
-    
+
     // Optimistically update the selectedTable so modal transitions to running view
     const now = new Date().toISOString();
     if (targetId) {
@@ -241,14 +241,14 @@ export default function TableMonitor() {
         t.id === targetId ? updatedTable : t
       ));
     }
-    
+
     setStartHours('');
     setExtensionHistory([]);
-    
+
     // Show toast
-    setToast(`Table started · ${hours > 0 ? (hours < 1 ? `${Math.round(hours*60)}min` : `${hours}h`) : 'Unlimited'}`);
+    setToast(`Table started · ${hours > 0 ? (hours < 1 ? `${Math.round(hours * 60)}min` : `${hours}h`) : 'Unlimited'}`);
     setTimeout(() => setToast(''), 1500);
-    
+
     // Call API in background
     doAction('start', { hours }, targetId);
   };
@@ -323,7 +323,7 @@ export default function TableMonitor() {
     try {
       const now = new Date().toISOString();
       const batch = writeBatch(db);
-      
+
       const saleRef = doc(collection(db, 'sales'));
       const salePayload = {
         table_number: payModal.table_number,
@@ -347,15 +347,15 @@ export default function TableMonitor() {
         const foodDoc = foods.find(f => f.id === item.food_id.toString());
         if (foodDoc) {
           if (item.flavor_name && foodDoc.flavors) {
-             const newFlavors = [...foodDoc.flavors];
-             const fIdx = newFlavors.findIndex(fl => fl.flavor_name === item.flavor_name);
-             if (fIdx !== -1) {
-                newFlavors[fIdx].stock = Math.max(0, (newFlavors[fIdx].stock || 0) - item.quantity);
-                const sum = newFlavors.reduce((a, b) => a + (b.stock || 0), 0);
-                batch.update(foodDocRef, { flavors: newFlavors, stock: sum });
-             }
+            const newFlavors = [...foodDoc.flavors];
+            const fIdx = newFlavors.findIndex(fl => fl.flavor_name === item.flavor_name);
+            if (fIdx !== -1) {
+              newFlavors[fIdx].stock = Math.max(0, (newFlavors[fIdx].stock || 0) - item.quantity);
+              const sum = newFlavors.reduce((a, b) => a + (b.stock || 0), 0);
+              batch.update(foodDocRef, { flavors: newFlavors, stock: sum });
+            }
           } else {
-             batch.update(foodDocRef, { stock: increment(-item.quantity) });
+            batch.update(foodDocRef, { stock: increment(-item.quantity) });
           }
         }
       }
@@ -441,7 +441,7 @@ export default function TableMonitor() {
     try {
       const extQ = query(collection(db, 'extension_history'), where('table_id', '==', table.id.toString()));
       const extSnap = await getDocs(extQ);
-      const exts = extSnap.docs.map(d => d.data()).sort((a,b) => a.extended_at.localeCompare(b.extended_at));
+      const exts = extSnap.docs.map(d => d.data()).sort((a, b) => a.extended_at.localeCompare(b.extended_at));
       setExtensionHistory(exts);
     } catch (err) {
       console.error('Failed to fetch extension history:', err);
@@ -683,15 +683,15 @@ export default function TableMonitor() {
         const foodDoc = foods.find(f => f.id === item.food_id.toString());
         if (foodDoc) {
           if (item.flavor_name && foodDoc.flavors) {
-             const newFlavors = [...foodDoc.flavors];
-             const fIdx = newFlavors.findIndex(fl => fl.flavor_name === item.flavor_name);
-             if (fIdx !== -1) {
-                newFlavors[fIdx].stock = Math.max(0, (newFlavors[fIdx].stock || 0) - item.quantity);
-                const sum = newFlavors.reduce((a, b) => a + (b.stock || 0), 0);
-                batch.update(foodDocRef, { flavors: newFlavors, stock: sum });
-             }
+            const newFlavors = [...foodDoc.flavors];
+            const fIdx = newFlavors.findIndex(fl => fl.flavor_name === item.flavor_name);
+            if (fIdx !== -1) {
+              newFlavors[fIdx].stock = Math.max(0, (newFlavors[fIdx].stock || 0) - item.quantity);
+              const sum = newFlavors.reduce((a, b) => a + (b.stock || 0), 0);
+              batch.update(foodDocRef, { flavors: newFlavors, stock: sum });
+            }
           } else {
-             batch.update(foodDocRef, { stock: increment(-item.quantity) });
+            batch.update(foodDocRef, { stock: increment(-item.quantity) });
           }
         }
       }
@@ -863,7 +863,6 @@ export default function TableMonitor() {
               {runningCount} running · {pausedCount} paused · {availableCount} available · {exhibitionCount} exhibition · ₱200/hr
             </p>
           </div>
-          <button className="btn-outline text-xs" onClick={() => window.location.reload()}>↻ Refresh</button>
         </div>
 
         {/* Time's Up Center Modal */}
@@ -920,7 +919,7 @@ export default function TableMonitor() {
         {loading ? (
           <div className="text-gray-500 text-sm">Loading tables...</div>
         ) : (
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2 sm:gap-4">
             {tables.map(table => (
               <TableCard
                 key={table.id}
@@ -935,10 +934,10 @@ export default function TableMonitor() {
 
       {/* Table Detail Modal */}
       {selectedTable && !payModal && (
-        <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
-          <div className="card w-full max-w-lg max-h-[90vh] overflow-y-auto p-6">
-            <div className="flex items-center justify-between mb-6">
-              <h2 className="text-xl font-black text-white">Table {selectedTable.table_number}</h2>
+        <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-3 sm:p-4">
+          <div className="card w-full max-w-lg max-h-[90vh] overflow-y-auto p-4 sm:p-6">
+            <div className="flex items-center justify-between mb-4 sm:mb-6">
+              <h2 className="text-lg sm:text-xl font-black text-white">Table {selectedTable.table_number}</h2>
               <div className="flex items-center gap-3">
                 <button onClick={() => setSelectedTable(null)} className="text-gray-500 hover:text-white text-2xl leading-none">×</button>
               </div>
@@ -949,7 +948,7 @@ export default function TableMonitor() {
               <div className="space-y-4">
                 <div>
                   <label className="block text-xs text-gray-400 uppercase tracking-wider font-semibold mb-3">Select Duration</label>
-                  <div className="grid grid-cols-3 gap-2 mb-3">
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 mb-3">
                     {[
                       { label: '1 hr', hours: 1, cost: 200 },
                       { label: '2 hr', hours: 2, cost: 400 },
@@ -960,8 +959,8 @@ export default function TableMonitor() {
                       <button
                         key={opt.hours}
                         className={`p-2 rounded-lg border-2 text-center transition-all ${startHours === String(opt.hours)
-                            ? 'duration-selected shadow-md'
-                            : 'border-gray-700 text-gray-400 hover:border-gray-500 hover:text-white'
+                          ? 'duration-selected shadow-md'
+                          : 'border-gray-700 text-gray-400 hover:border-gray-500 hover:text-white'
                           }`}
                         onClick={() => setStartHours(String(opt.hours))}
                       >
@@ -988,7 +987,7 @@ export default function TableMonitor() {
                         ? `${Math.round(parseFloat(startHours) * 60)}min`
                         : `${startHours}h`
                       } · ₱{calculateTableCost(0, parseFloat(startHours)).toFixed(2)}
-                      {parseFloat(startHours) < 1 && <span className="text-green-400 ml-1">(min ₱200)</span>}
+                      {parseFloat(startHours) < 1 && <span className="text-gray-400 ml-1">(min ₱200)</span>}
                     </p>
                   )}
 
@@ -1112,12 +1111,12 @@ export default function TableMonitor() {
             {isRunning && (
               <div className="space-y-4">
                 {/* Live Timer - Frozen when pay modal is open */}
-                <div className={`rounded-lg p-4 text-center font-mono ${selectedTable.set_hours > 0 && (frozenElapsed !== null ? frozenElapsed : localElapsed) >= selectedTable.set_hours * 3600
-                    ? 'bg-red-600 text-white' : 'bg-white text-black'
+                <div className={`rounded-lg p-3 sm:p-4 text-center font-mono ${selectedTable.set_hours > 0 && (frozenElapsed !== null ? frozenElapsed : localElapsed) >= selectedTable.set_hours * 3600
+                  ? 'bg-red-600 text-white' : 'bg-white text-black'
                   }`}>
                   {selectedTable.set_hours > 0 ? (
                     <>
-                      <div className="text-3xl font-black tracking-widest">
+                      <div className="text-2xl sm:text-3xl font-black tracking-widest">
                         {formatTime(Math.max(0, Math.round(selectedTable.set_hours * 3600 - (frozenElapsed !== null ? frozenElapsed : localElapsed))))}
                       </div>
                       <div className="text-sm mt-1 font-semibold">
@@ -1131,7 +1130,7 @@ export default function TableMonitor() {
                     </>
                   ) : (
                     <>
-                      <div className="text-3xl font-black tracking-widest">{formatTime(frozenElapsed !== null ? frozenElapsed : localElapsed)}</div>
+                      <div className="text-2xl sm:text-3xl font-black tracking-widest">{formatTime(frozenElapsed !== null ? frozenElapsed : localElapsed)}</div>
                       <div className="text-sm mt-1 font-semibold">₱{calculateTableCost(frozenElapsed !== null ? frozenElapsed : localElapsed).toFixed(2)}</div>
                       {frozenElapsed !== null && <div className="text-xs mt-1 opacity-70">(Stopped)</div>}
                     </>
@@ -1173,8 +1172,8 @@ export default function TableMonitor() {
 
                 {/* Billing History for Running Tables */}
                 {(extensionHistory.length > 0 || selectedTable?.set_hours > 0) && (
-                  <div className="card-elevated p-3 border-l-4 border-l-blue-500 bg-gradient-to-r from-blue-500/10 to-transparent">
-                    <label className="block text-xs text-blue-400 uppercase tracking-wider font-bold mb-2 flex items-center gap-2">
+                  <div className="card-elevated p-3 border-l-4 border-l-gray-500 bg-gradient-to-r from-gray-500/10 to-transparent">
+                    <label className="block text-xs text-gray-300 uppercase tracking-wider font-bold mb-2 flex items-center gap-2">
                       <span></span> Billing History
                     </label>
                     <div className="space-y-2 max-h-32 overflow-y-auto">
@@ -1192,7 +1191,7 @@ export default function TableMonitor() {
                               return (
                                 <>
                                   <span>{initialHours}h / ₱{(initialHours * 200).toFixed(0)}</span>
-                                  <span className="text-green-400">₱{(initialHours * 200).toFixed(2)}</span>
+                                  <span className="text-white">₱{(initialHours * 200).toFixed(2)}</span>
                                 </>
                               );
                             })()}
@@ -1209,7 +1208,7 @@ export default function TableMonitor() {
                           </div>
                           <div className="flex justify-between text-white mt-1">
                             <span>+{ext.extended_hours}h / +₱{(ext.extended_hours * 200).toFixed(0)}</span>
-                            <span className="text-green-400">+₱{(ext.extended_hours * 200).toFixed(2)}</span>
+                            <span className="text-white">+₱{(ext.extended_hours * 200).toFixed(2)}</span>
                           </div>
                         </div>
                       ))}
@@ -1231,13 +1230,13 @@ export default function TableMonitor() {
                     <p className="text-xs text-gray-500 uppercase tracking-wider font-semibold mb-2">Cart</p>
                     <div className="space-y-2">
                       {cart.map((item, idx) => (
-                        <div key={`${item.food_id}-${item.flavor_name || 'none'}-${idx}`} className="flex items-center justify-between text-sm">
-                          <span className="text-white flex-1">{item.food_name}</span>
-                          <div className="flex items-center gap-2">
+                        <div key={`${item.food_id}-${item.flavor_name || 'none'}-${idx}`} className="flex items-center gap-1 text-sm">
+                          <span className="text-white flex-1 min-w-0 truncate text-xs sm:text-sm">{item.food_name}</span>
+                          <div className="flex items-center gap-1 sm:gap-2 flex-shrink-0">
                             <button onClick={() => handleDecreaseQty(item.food_id, item.flavor_name)} className="text-gray-400 hover:text-white w-6 h-6 flex items-center justify-center border border-gray-700 rounded" title={item.quantity === 1 ? "Void item (Owner only)" : "Decrease quantity"}>−</button>
-                            <span className="text-white w-5 text-center">{item.quantity}</span>
+                            <span className="text-white w-4 text-center text-xs">{item.quantity}</span>
                             <button onClick={() => adjustQty(item.food_id, 1, item.flavor_name)} className="text-gray-400 hover:text-white w-6 h-6 flex items-center justify-center border border-gray-700 rounded">+</button>
-                            <span className="text-white font-semibold w-16 text-right">₱{(item.price * item.quantity).toFixed(2)}</span>
+                            <span className="text-white font-semibold w-14 text-right text-xs">₱{(item.price * item.quantity).toFixed(2)}</span>
                           </div>
                         </div>
                       ))}
@@ -1299,8 +1298,8 @@ export default function TableMonitor() {
             {/* PAUSED: Resume + Stop */}
             {isPaused && (
               <div className="space-y-4">
-                <div className="bg-gray-900 text-gray-400 rounded-lg p-4 text-center font-mono">
-                  <div className="text-3xl font-black tracking-widest">{formatTime(selectedTable.elapsed_seconds)}</div>
+                <div className="bg-gray-900 text-gray-400 rounded-lg p-3 sm:p-4 text-center font-mono">
+                  <div className="text-2xl sm:text-3xl font-black tracking-widest">{formatTime(selectedTable.elapsed_seconds)}</div>
                   <div className="text-sm mt-1 font-semibold">₱{selectedTable.cost?.toFixed(2)}</div>
                 </div>
 
@@ -1355,13 +1354,13 @@ export default function TableMonitor() {
                     <p className="text-xs text-gray-500 uppercase tracking-wider font-semibold mb-2">Cart</p>
                     <div className="space-y-2">
                       {cart.map((item, idx) => (
-                        <div key={`${item.food_id}-${item.flavor_name || 'none'}-${idx}`} className="flex items-center justify-between text-sm">
-                          <span className="text-white flex-1">{item.food_name}</span>
-                          <div className="flex items-center gap-2">
+                        <div key={`${item.food_id}-${item.flavor_name || 'none'}-${idx}`} className="flex items-center gap-1 text-sm">
+                          <span className="text-white flex-1 min-w-0 truncate text-xs sm:text-sm">{item.food_name}</span>
+                          <div className="flex items-center gap-1 sm:gap-2 flex-shrink-0">
                             <button onClick={() => handleDecreaseQty(item.food_id, item.flavor_name)} className="text-gray-400 hover:text-white w-6 h-6 flex items-center justify-center border border-gray-700 rounded" title={item.quantity === 1 ? "Void item (Owner only)" : "Decrease quantity"}>−</button>
-                            <span className="text-white w-5 text-center">{item.quantity}</span>
+                            <span className="text-white w-4 text-center text-xs">{item.quantity}</span>
                             <button onClick={() => adjustQty(item.food_id, 1, item.flavor_name)} className="text-gray-400 hover:text-white w-6 h-6 flex items-center justify-center border border-gray-700 rounded">+</button>
-                            <span className="text-white font-semibold w-16 text-right">₱{(item.price * item.quantity).toFixed(2)}</span>
+                            <span className="text-white font-semibold w-14 text-right text-xs">₱{(item.price * item.quantity).toFixed(2)}</span>
                           </div>
                         </div>
                       ))}
@@ -1422,9 +1421,9 @@ export default function TableMonitor() {
             {/* FINISHED: Extend Hours, Pay or Reset */}
             {isFinished && (
               <div className="space-y-4">
-                <div className="bg-gray-900 text-gray-300 rounded-lg p-4 text-center font-mono">
-                  <div className="text-3xl font-black tracking-widest">{formatTime(selectedTable.elapsed_seconds)}</div>
-                  {/* Calculate actual cost based on elapsed time */}
+                {/* Timer / Cost Display */}
+                <div className="bg-black border border-gray-700 rounded-lg p-3 sm:p-4 text-center font-mono">
+                  <div className="text-2xl sm:text-3xl font-black tracking-widest text-white">{formatTime(selectedTable.elapsed_seconds)}</div>
                   {(() => {
                     const elapsedHours = (selectedTable.elapsed_seconds || 0) / 3600;
                     const totalMinutes = Math.floor((selectedTable.elapsed_seconds || 0) / 60);
@@ -1434,10 +1433,10 @@ export default function TableMonitor() {
                     const displayCost = roundedHours * 200;
                     return (
                       <>
-                        <div className="text-sm mt-1 font-semibold">₱{displayCost.toFixed(2)}</div>
-                        <div className="text-[10px] text-gray-500 mt-2">
-                          {selectedTable.set_hours > 0 
-                            ? `${selectedTable.set_hours}h prepaid + ${(elapsedHours - selectedTable.set_hours).toFixed(1)}h overtime` 
+                        <div className="text-sm mt-1 font-bold text-white">₱{displayCost.toFixed(2)}</div>
+                        <div className="text-[10px] text-gray-400 mt-1">
+                          {selectedTable.set_hours > 0
+                            ? `${selectedTable.set_hours}h prepaid + ${(elapsedHours - selectedTable.set_hours).toFixed(1)}h overtime`
                             : `${roundedHours}h @ ₱200/hr (rounded)`}
                         </div>
                       </>
@@ -1445,11 +1444,9 @@ export default function TableMonitor() {
                   })()}
                 </div>
 
-                {/* Extend Hours - Available even when finished */}
-                <div className="card-elevated p-3 border-l-4 border-l-amber-500 bg-gradient-to-r from-amber-500/10 to-transparent">
-                  <label className="block text-xs text-amber-400 uppercase tracking-wider font-bold mb-2 flex items-center gap-2">
-                    <span></span> Extend More Hours
-                  </label>
+                {/* Extend More Hours */}
+                <div className="border border-gray-700 rounded-lg p-3">
+                  <label className="block text-xs text-gray-300 uppercase tracking-wider font-bold mb-2">Extend More Hours</label>
                   <div className="flex gap-2">
                     <input
                       type="number"
@@ -1473,51 +1470,50 @@ export default function TableMonitor() {
                   )}
                 </div>
 
-                {/* Extension History for Finished Tables */}
+                {/* Billing History */}
                 {(extensionHistory.length > 0 || selectedTable?.set_hours > 0) && (
-                  <div className="card-elevated p-3 border-l-4 border-l-blue-500 bg-gradient-to-r from-blue-500/10 to-transparent">
-                    <label className="block text-xs text-blue-400 uppercase tracking-wider font-bold mb-2 flex items-center gap-2">
-                      <span></span> Billing History
-                    </label>
+                  <div className="border border-gray-700 rounded-lg p-3">
+                    <label className="block text-xs text-gray-300 uppercase tracking-wider font-bold mb-2">Billing History</label>
                     <div className="space-y-2 max-h-40 overflow-y-auto">
-                      {/* Initial Start - First computed */}
+                      {/* Initial Start */}
                       {selectedTable?.set_hours > 0 && (
-                        <div className="text-xs border-b border-gray-800 pb-1">
-                          <div className="flex justify-between text-gray-400">
+                        <div className="text-xs border-b border-gray-700 pb-2">
+                          <div className="flex justify-between text-gray-400 mb-1">
                             <span>1. Initial Start</span>
                             <span>{new Date(selectedTable.start_time).toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit', hour12: true })}</span>
                           </div>
-                          <div className="flex justify-between text-white mt-1">
+                          <div className="flex justify-between text-white font-semibold">
                             <span>{selectedTable.set_hours}h (Base Rate)</span>
-                            <span className="text-green-400">₱{(selectedTable.set_hours * 200).toFixed(2)}</span>
+                            <span>₱{(selectedTable.set_hours * 200).toFixed(2)}</span>
                           </div>
                         </div>
                       )}
 
-                      {/* Extensions - 2nd, 3rd, etc. computed */}
+                      {/* Extensions */}
                       {extensionHistory.map((ext, idx) => (
-                        <div key={idx} className="text-xs border-b border-gray-800 pb-1 last:border-0">
-                          <div className="flex justify-between text-gray-400">
+                        <div key={idx} className="text-xs border-b border-gray-700 pb-2 last:border-0">
+                          <div className="flex justify-between text-gray-400 mb-1">
                             <span>{idx + 2}. Extension #{idx + 1}</span>
                             <span>{new Date(ext.extended_at).toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit', hour12: true })}</span>
                           </div>
-                          <div className="flex justify-between text-white mt-1">
+                          <div className="flex justify-between text-white font-semibold">
                             <span>+{ext.extended_hours}h</span>
-                            <span className="text-green-400">+₱{ext.additional_cost?.toFixed(2)}</span>
+                            <span>+₱{ext.additional_cost?.toFixed(2)}</span>
                           </div>
-                          <div className="flex justify-between text-gray-500 text-[10px]">
+                          <div className="flex justify-between text-gray-500 text-[10px] mt-0.5">
                             <span>Running Total: {ext.new_total_hours?.toFixed(1)}h</span>
                             <span>₱{ext.new_total_cost?.toFixed(2)}</span>
                           </div>
                         </div>
                       ))}
                     </div>
-                    <div className="border-t-2 border-blue-500 mt-2 pt-2">
-                      <div className="flex justify-between text-sm font-bold">
+                    {/* Total */}
+                    <div className="border-t border-gray-600 mt-2 pt-2">
+                      <div className="flex justify-between text-sm font-black">
                         <span className="text-white">TOTAL BILL</span>
-                        <span className="text-green-400 text-lg">₱{selectedTable.cost?.toFixed(2)}</span>
+                        <span className="text-white text-base">₱{selectedTable.cost?.toFixed(2)}</span>
                       </div>
-                      <div className="text-xs text-gray-500 text-right">
+                      <div className="text-xs text-gray-500 text-right mt-0.5">
                         {(selectedTable.elapsed_seconds / 3600).toFixed(1)} hours total
                       </div>
                     </div>
@@ -1578,7 +1574,7 @@ export default function TableMonitor() {
               <div className="space-y-4">
                 <div className="bg-white border border-gray-300 rounded-lg p-4 text-center">
                   <div className="text-black text-sm font-semibold mb-2">EXHIBITION MATCH</div>
-                  <div className="text-black text-2xl font-black">₱{selectedTable.exhibition_bet?.toLocaleString('en-PH') || 0}</div>
+                  <div className="text-black text-xl sm:text-2xl font-black">₱{selectedTable.exhibition_bet?.toLocaleString('en-PH') || 0}</div>
                   <div className="text-gray-500 text-xs mt-1">Bet Amount</div>
                   <div className="border-t border-gray-300 mt-3 pt-3">
                     <div className="flex justify-between items-center">
@@ -1715,10 +1711,10 @@ export default function TableMonitor() {
 
       {/* Payment Modal (after stop) */}
       {payModal && (
-        <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
-          <div className="card w-full max-w-lg max-h-[90vh] overflow-y-auto p-6">
-            <div className="flex items-center justify-between mb-6">
-              <h2 className="text-xl font-black text-white">Table {payModal.table_number} — Checkout</h2>
+        <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-3 sm:p-4">
+          <div className="card w-full max-w-lg max-h-[90vh] overflow-y-auto p-4 sm:p-6">
+            <div className="flex items-center justify-between mb-4 sm:mb-6">
+              <h2 className="text-base sm:text-xl font-black text-white">Table {payModal.table_number} — Checkout</h2>
               <button onClick={() => { setPayModal(null); setFrozenElapsed(null); }} className="text-gray-500 hover:text-white text-2xl leading-none">×</button>
             </div>
 
@@ -1740,7 +1736,7 @@ export default function TableMonitor() {
 
             {/* Table Hours Summary (when no billing history) */}
             {!payModal.isExhibition && extensionHistory.length === 0 && (!payModal.set_hours || payModal.set_hours <= 0) && (
-              <div className="card-elevated p-4 mb-4 border-l-4 border-l-blue-500 bg-gradient-to-r from-blue-500/10 to-transparent">
+              <div className="card-elevated p-4 mb-4 border-l-4 border-l-gray-500 bg-gradient-to-r from-gray-500/10 to-transparent">
                 <div className="flex justify-between items-center mb-2">
                   <span className="text-gray-400 text-sm">Duration</span>
                   <span className="text-white font-bold text-sm">
@@ -1756,9 +1752,9 @@ export default function TableMonitor() {
 
             {/* Billing History Breakdown */}
             {!payModal.isExhibition && (extensionHistory.length > 0 || payModal.set_hours > 0) && (
-              <div className="card-elevated p-3 mb-4 border-l-4 border-l-blue-500 bg-gradient-to-r from-blue-500/10 to-transparent">
+              <div className="card-elevated p-3 mb-4 border-l-4 border-l-gray-500 bg-gradient-to-r from-gray-500/10 to-transparent">
                 <div className="flex justify-between items-center mb-2">
-                  <label className="block text-xs text-blue-400 uppercase tracking-wider font-bold">
+                  <label className="block text-xs text-gray-300 uppercase tracking-wider font-bold">
                     Billing History
                   </label>
                   {payModal.elapsed_seconds > 0 && (
@@ -1782,7 +1778,7 @@ export default function TableMonitor() {
                           return (
                             <>
                               <span>{initialHours}h / ₱{(initialHours * 200).toFixed(0)}</span>
-                              <span className="text-green-400">₱{(initialHours * 200).toFixed(2)}</span>
+                              <span className="text-white">₱{(initialHours * 200).toFixed(2)}</span>
                             </>
                           );
                         })()}
@@ -1799,12 +1795,12 @@ export default function TableMonitor() {
                       </div>
                       <div className="flex justify-between text-white mt-1">
                         <span>+{ext.extended_hours}h / +₱{(ext.extended_hours * 200).toFixed(0)}</span>
-                        <span className="text-green-400">+₱{(ext.extended_hours * 200).toFixed(2)}</span>
+                        <span className="text-white">+₱{(ext.extended_hours * 200).toFixed(2)}</span>
                       </div>
                     </div>
                   ))}
                 </div>
-                <div className="border-t-2 border-blue-500 mt-2 pt-2">
+                <div className="border-t-2 border-gray-500 mt-2 pt-2">
                   <div className="flex justify-between text-sm font-bold">
                     <span className="text-white">Table Cost Total</span>
                     <span className="text-white">₱{tableCost.toFixed(2)}</span>
@@ -1843,7 +1839,7 @@ export default function TableMonitor() {
               <div className="border-t border-gray-700 pt-3">
                 <div className="flex justify-between font-bold text-lg">
                   <span className="text-white">TOTAL</span>
-                  <span className="text-green-400">₱{grandTotal.toFixed(2)}</span>
+                  <span className="text-white">₱{grandTotal.toFixed(2)}</span>
                 </div>
               </div>
             </div>
@@ -1857,8 +1853,8 @@ export default function TableMonitor() {
                   type="button"
                   onClick={() => setPaymentMode('Cash')}
                   className={`flex-1 p-2 rounded-lg border-2 text-xs font-bold transition-all ${paymentMode === 'Cash'
-                      ? 'border-blue-500 bg-blue-500 text-white'
-                      : 'border-gray-700 text-gray-400 hover:border-gray-500 hover:text-white'
+                    ? 'border-blue-500 bg-blue-500 text-white'
+                    : 'border-gray-700 text-gray-400 hover:border-gray-500 hover:text-white'
                     }`}
                 >Cash</button>
                 {/* GCash */}
@@ -1866,8 +1862,8 @@ export default function TableMonitor() {
                   type="button"
                   onClick={() => setPaymentMode('GCash')}
                   className={`flex-1 p-2 rounded-lg border-2 text-xs font-bold transition-all ${paymentMode === 'GCash'
-                      ? 'border-blue-500 bg-blue-500 text-white'
-                      : 'border-gray-700 text-gray-400 hover:border-gray-500 hover:text-white'
+                    ? 'border-blue-500 bg-blue-500 text-white'
+                    : 'border-gray-700 text-gray-400 hover:border-gray-500 hover:text-white'
                     }`}
                 >GCash</button>
               </div>
@@ -1902,8 +1898,8 @@ export default function TableMonitor() {
 
       {/* Food Menu Modal */}
       {showFoodModal && (
-        <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-[60] p-4">
-          <div className="card w-full max-w-4xl max-h-[85vh] overflow-y-auto p-6">
+        <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-[60] p-3 sm:p-4">
+          <div className="card w-full max-w-4xl max-h-[85vh] overflow-y-auto p-4 sm:p-6">
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-lg font-bold text-white">Food Menu</h2>
               <button onClick={() => setShowFoodModal(false)} className="text-gray-500 hover:text-white text-2xl leading-none">×</button>
@@ -1911,7 +1907,7 @@ export default function TableMonitor() {
 
             {/* Search and Filter */}
             <div className="mb-4 space-y-3">
-              <div className="flex gap-2">
+              <div className="flex flex-col sm:flex-row gap-2">
                 <input
                   type="text"
                   placeholder="Search food or drinks..."
@@ -1922,7 +1918,7 @@ export default function TableMonitor() {
                 <select
                   value={foodCategoryFilter}
                   onChange={(e) => setFoodCategoryFilter(e.target.value)}
-                  className="input max-w-[180px]"
+                  className="input sm:max-w-[180px]"
                 >
                   <option value="All">All Categories</option>
                   <option value="Food">Food</option>
@@ -1956,7 +1952,7 @@ export default function TableMonitor() {
                 return (
                   <div key={cat}>
                     <p className="text-xs text-gray-500 font-semibold mb-2 uppercase tracking-wider">{cat}</p>
-                    <div className="grid grid-cols-3 gap-2">
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                       {catFoods.map(food => {
                         const hasFlavors = food.flavors && food.flavors.length > 0;
                         const avail = hasFlavors
@@ -2121,16 +2117,16 @@ export default function TableMonitor() {
               const usersSnap = await getDocs(query(collection(db, 'users'), where('role', '==', 'owner')));
               const ownerDoc = usersSnap.docs.find(d => d.data().void_password === password);
               if (!ownerDoc) throw new Error('Invalid password');
-              
+
               const batch = writeBatch(db);
-              
+
               // Clear extension history for this table (current customer session ended)
               const extQ = query(collection(db, 'extension_history'), where('table_id', '==', resetPasswordModal.tableId.toString()));
               const extsSnap = await getDocs(extQ);
               extsSnap.forEach(d => {
                 batch.delete(d.ref);
               });
-              
+
               batch.update(doc(db, 'tables', resetPasswordModal.tableId.toString()), {
                 status: 'available',
                 start_time: null,
@@ -2143,7 +2139,7 @@ export default function TableMonitor() {
                 cost: 0,
                 elapsed_seconds: 0
               });
-              
+
               await batch.commit();
 
               setSelectedTable(null);
@@ -2222,10 +2218,10 @@ function CctvPlayer({ tableId, zoom }) {
     const timer = setTimeout(() => {
       try {
         playerRef.current = new JSMpeg.Player(wsUrl, {
-          canvas:   canvasRef.current,
+          canvas: canvasRef.current,
           autoplay: true,
-          audio:    false,
-          loop:     false,
+          audio: false,
+          loop: false,
           // No console output from JSMpeg internals
           onVideoDecode: null,
         });
@@ -2237,7 +2233,7 @@ function CctvPlayer({ tableId, zoom }) {
     return () => {
       clearTimeout(timer);
       if (playerRef.current) {
-        try { playerRef.current.destroy(); } catch (_) {}
+        try { playerRef.current.destroy(); } catch (_) { }
         playerRef.current = null;
       }
     };
@@ -2315,7 +2311,7 @@ function CctvModal({ table, onClose, onSave }) {
   return (
     <div className="fixed inset-0 bg-black/90 flex items-center justify-center z-[90] p-4">
       <div className="card w-full max-w-2xl max-h-[95vh] overflow-y-auto flex flex-col p-0">
-        
+
         {/* Header */}
         <div className="bg-gray-900 border-b border-gray-800 p-4 flex items-center justify-between sticky top-0 z-10">
           <div className="flex items-center gap-3">
@@ -2333,11 +2329,11 @@ function CctvModal({ table, onClose, onSave }) {
 
         {/* Content — single column */}
         <div className="flex flex-col gap-4 p-6">
-          
+
           {/* Main Feed Area */}
           <div className="flex flex-col gap-3">
             <div className="bg-black border border-gray-800 rounded-xl overflow-hidden aspect-video flex items-center justify-center relative group">
-              
+
               {!connected ? (
                 connecting ? (
                   <div className="text-center">
@@ -2389,7 +2385,7 @@ function CctvModal({ table, onClose, onSave }) {
                 </div>
               )}
             </div>
-            
+
             {connected && (
               <div className="mt-4 flex gap-3">
                 <button className="flex-1 bg-gray-800 hover:bg-gray-700 text-white text-xs font-semibold py-2.5 rounded-lg border border-gray-700 transition flex items-center justify-center gap-2">
@@ -2399,7 +2395,7 @@ function CctvModal({ table, onClose, onSave }) {
                   </svg>
                   Snapshot
                 </button>
-                <button 
+                <button
                   className="flex-1 bg-red-900/30 hover:bg-red-900/50 text-red-400 text-xs font-semibold py-2.5 rounded-lg border border-red-900/50 transition flex items-center justify-center gap-2"
                   onClick={() => {
                     setConnected(false);
@@ -2430,11 +2426,10 @@ function CctvModal({ table, onClose, onSave }) {
                 </svg>
                 <span className="text-sm font-bold text-white">Connection Settings</span>
                 {/* Live status pill */}
-                <span className={`flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full ${
-                  connected ? 'bg-green-500/15 text-green-400' :
+                <span className={`flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full ${connected ? 'bg-green-500/15 text-green-400' :
                   connecting ? 'bg-blue-500/15 text-blue-400' :
-                  'bg-gray-800 text-gray-500'
-                }`}>
+                    'bg-gray-800 text-gray-500'
+                  }`}>
                   <span className={`w-1.5 h-1.5 rounded-full ${connected ? 'bg-green-400' : connecting ? 'bg-blue-400 animate-pulse' : 'bg-gray-500'}`}></span>
                   {connected ? 'Online' : connecting ? 'Connecting…' : 'Offline'}
                 </span>
@@ -2449,7 +2444,7 @@ function CctvModal({ table, onClose, onSave }) {
             {showSettings && (
               <div className="px-4 pb-4 pt-4 bg-gray-950 border-t border-gray-800 space-y-4">
                 {/* IP + Port row */}
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
                     <label className="block text-xs text-gray-400 font-semibold mb-1.5">Camera IP Address</label>
                     <input

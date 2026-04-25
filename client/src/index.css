@@ -240,10 +240,16 @@ body {
   background: var(--badge-available-bg);
   color: var(--badge-available-text);
   border: 1px solid var(--badge-available-border);
-  padding: 0.2rem 0.6rem;
+  padding: 0.15rem 0.4rem;
   border-radius: 99px;
-  font-size: 0.7rem;
+  font-size: 0.6rem;
   font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  @media (min-width: 640px) {
+    padding: 0.2rem 0.6rem;
+    font-size: 0.7rem;
+  }
   text-transform: uppercase;
   letter-spacing: 0.05em;
 }
@@ -251,10 +257,16 @@ body {
 .badge-running {
   background: var(--badge-running-bg);
   color: var(--badge-running-text);
-  padding: 0.2rem 0.6rem;
+  padding: 0.15rem 0.4rem;
   border-radius: 99px;
-  font-size: 0.7rem;
+  font-size: 0.6rem;
   font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  @media (min-width: 640px) {
+    padding: 0.2rem 0.6rem;
+    font-size: 0.7rem;
+  }
   text-transform: uppercase;
   letter-spacing: 0.05em;
 }
@@ -263,10 +275,16 @@ body {
   background: var(--badge-paused-bg);
   color: var(--badge-paused-text);
   border: 1px solid var(--badge-paused-border);
-  padding: 0.2rem 0.6rem;
+  padding: 0.15rem 0.4rem;
   border-radius: 99px;
-  font-size: 0.7rem;
+  font-size: 0.6rem;
   font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  @media (min-width: 640px) {
+    padding: 0.2rem 0.6rem;
+    font-size: 0.7rem;
+  }
   text-transform: uppercase;
   letter-spacing: 0.05em;
 }
@@ -275,10 +293,16 @@ body {
   background: var(--badge-finished-bg);
   color: var(--badge-finished-text);
   border: 1px solid var(--badge-finished-border);
-  padding: 0.2rem 0.6rem;
+  padding: 0.15rem 0.4rem;
   border-radius: 99px;
-  font-size: 0.7rem;
+  font-size: 0.6rem;
   font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  @media (min-width: 640px) {
+    padding: 0.2rem 0.6rem;
+    font-size: 0.7rem;
+  }
   text-transform: uppercase;
   letter-spacing: 0.05em;
 }
@@ -287,10 +311,16 @@ body {
   background: var(--badge-exhibition-bg);
   color: var(--badge-exhibition-text);
   border: 1px solid var(--badge-exhibition-border);
-  padding: 0.2rem 0.6rem;
+  padding: 0.15rem 0.4rem;
   border-radius: 99px;
-  font-size: 0.7rem;
+  font-size: 0.6rem;
   font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  @media (min-width: 640px) {
+    padding: 0.2rem 0.6rem;
+    font-size: 0.7rem;
+  }
   text-transform: uppercase;
   letter-spacing: 0.05em;
 }
@@ -389,6 +419,35 @@ input[type="date"]::-webkit-calendar-picker-indicator {
 @keyframes fadeIn {
   from { opacity: 0; transform: translateY(6px); }
   to { opacity: 1; transform: translateY(0); }
+}
+
+/* Mobile nav drawer slide-down */
+@keyframes slideDown {
+  from { opacity: 0; transform: translateY(-8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.animate-slideDown {
+  animation: slideDown 0.18s ease;
+}
+
+/* Responsive table wrapper — horizontal scroll on small screens */
+.responsive-table {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Responsive page header — stacks on mobile, row on sm+ */
+.responsive-header {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+@media (min-width: 640px) {
+  .responsive-header {
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+  }
 }
 
 /* Table card animations */

@@ -51,7 +51,7 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-950 flex flex-col items-center justify-center px-4 relative">
+    <div className="min-h-screen bg-gray-950 flex flex-col items-center justify-center px-4 py-8 relative">
       {/* Theme Toggle */}
       <button
         onClick={toggleTheme}
@@ -62,13 +62,13 @@ export default function LoginPage() {
       </button>
 
       {/* Logo */}
-      <div className="text-center mb-10">
-        <h1 className="text-4xl font-black tracking-tighter text-white">MARBOYS</h1>
+      <div className="text-center mb-8">
+        <h1 className="text-3xl sm:text-4xl font-black tracking-tighter text-white">MARBOYS</h1>
         <p className="text-gray-500 text-sm mt-1 uppercase tracking-widest font-medium">Billiard POS System</p>
       </div>
 
       {/* Card */}
-      <div className="card w-full max-w-sm p-8">
+      <div className="card w-full max-w-sm p-6 sm:p-8">
         <h2 className="text-lg font-bold text-white mb-1">Sign In</h2>
         <p className="text-sm text-gray-500 mb-6">Enter your credentials to continue</p>
 

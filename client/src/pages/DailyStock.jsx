@@ -221,25 +221,27 @@ export default function DailyStock() {
   return (
     <Layout>
       <div className="page-enter">
-        <div className="mb-8">
-          <h1 className="text-2xl font-black text-white">Daily Stock Inventory</h1>
+        <div className="mb-6">
+          <h1 className="text-xl sm:text-2xl font-black text-white">Daily Stock Inventory</h1>
           <p className="text-gray-500 text-sm mt-1">Track daily stock additions and history</p>
         </div>
 
         {/* Date Filter */}
         <div className="card p-4 mb-6">
-          <div className="flex items-center gap-4">
-            <Calendar className="w-5 h-5 text-gray-500" />
-            <label className="text-sm text-gray-400">Select Date:</label>
+          <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+            <div className="flex items-center gap-2">
+              <Calendar className="w-5 h-5 text-gray-500 flex-shrink-0" />
+              <label className="text-sm text-gray-400 flex-shrink-0">Select Date:</label>
+            </div>
             <input
               type="date"
               value={selectedDate}
               onChange={(e) => setSelectedDate(e.target.value)}
-              className="input"
+              className="input flex-1"
             />
             <button
               onClick={() => setSelectedDate(new Date().toISOString().split('T')[0])}
-              className="text-xs px-3 py-1.5 bg-gray-800 text-gray-300 rounded-lg hover:bg-gray-700"
+              className="text-xs px-3 py-1.5 bg-gray-800 text-gray-300 rounded-lg hover:bg-gray-700 flex-shrink-0"
             >
               Today
             </button>
@@ -276,7 +278,7 @@ export default function DailyStock() {
           ) : filteredRecords.length === 0 ? (
             <p className="text-gray-600 text-sm">No stock records for {selectedDate}.</p>
           ) : (
-            <div className="overflow-x-auto">
+            <div className="responsive-table">
               <table className="w-full text-sm">
                 <thead className="border-b border-gray-800">
                   <tr>
@@ -327,7 +329,7 @@ export default function DailyStock() {
         {/* Modal */}
         {showModal && (
           <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-[60] p-4">
-            <div className="card w-full max-w-md p-6">
+            <div className="card w-full max-w-md p-5 sm:p-6 max-h-[90vh] overflow-y-auto">
               <div className="flex items-center justify-between mb-4">
                 <h2 className="text-lg font-bold text-white">
                   {editingRecord ? 'Edit Daily Stock' : 'Add Daily Stock'}

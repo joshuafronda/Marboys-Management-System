@@ -621,40 +621,40 @@ export default function InventoryPage() {
       <div className="page-enter">
         {/* Header with Tabs */}
         <div className="mb-6">
-          <h1 className="text-2xl font-black text-white mb-4">Inventory Management</h1>
-          <div className="flex gap-2">
+          <h1 className="text-xl sm:text-2xl font-black text-white mb-4">Inventory Management</h1>
+          <div className="flex flex-wrap gap-2">
             <button
               onClick={() => setActiveTab('inventory')}
-              className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-colors ${
+              className={`flex items-center gap-1.5 px-3 sm:px-4 py-2 rounded-lg text-xs sm:text-sm font-semibold transition-colors ${
                 activeTab === 'inventory'
                   ? 'bg-white text-black'
                   : 'bg-gray-800 text-gray-400 hover:text-white'
               }`}
             >
-              <Package className="w-4 h-4" />
-              Food Inventory
+              <Package className="w-4 h-4 flex-shrink-0" />
+              <span>Food Inventory</span>
             </button>
             <button
               onClick={() => setActiveTab('daily-stock')}
-              className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-colors ${
+              className={`flex items-center gap-1.5 px-3 sm:px-4 py-2 rounded-lg text-xs sm:text-sm font-semibold transition-colors ${
                 activeTab === 'daily-stock'
                   ? 'bg-white text-black'
                   : 'bg-gray-800 text-gray-400 hover:text-white'
               }`}
             >
-              <Plus className="w-4 h-4" />
-              Daily Stock
+              <Plus className="w-4 h-4 flex-shrink-0" />
+              <span>Daily Stock</span>
             </button>
             <button
               onClick={() => setActiveTab('stock-history')}
-              className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-colors ${
+              className={`flex items-center gap-1.5 px-3 sm:px-4 py-2 rounded-lg text-xs sm:text-sm font-semibold transition-colors ${
                 activeTab === 'stock-history'
                   ? 'bg-white text-black'
                   : 'bg-gray-800 text-gray-400 hover:text-white'
               }`}
             >
-              <History className="w-4 h-4" />
-              Stock History
+              <History className="w-4 h-4 flex-shrink-0" />
+              <span>Stock History</span>
             </button>
           </div>
         </div>
@@ -662,13 +662,12 @@ export default function InventoryPage() {
         {/* Food Inventory Tab */}
         {activeTab === 'inventory' && (
           <>
-            <div className="flex items-center justify-between mb-4">
-              <div>
-                <p className="text-gray-500 text-sm">{foods.length} items · {foods.filter(f => f.status === 'available').length} available</p>
-              </div>
+            {/* Inventory header: responsive */}
+            <div className="responsive-header mb-4">
+              <p className="text-gray-500 text-sm">{foods.length} items · {foods.filter(f => f.status === 'available').length} available</p>
               <button
                 id="add-food-btn"
-                className="btn-primary px-5 py-2"
+                className="btn-primary px-4 sm:px-5 py-2 text-sm"
                 onClick={() => setModal('add')}
               >
                 + Add Food
@@ -676,34 +675,32 @@ export default function InventoryPage() {
             </div>
 
             {/* Search + Category Dropdown */}
-            <div className="flex gap-3 mb-4">
-          <input
-            type="text"
-            className="input"
-            style={{ flex: 1 }}
-            placeholder="Search inventory..."
-            value={search}
-            onChange={e => setSearch(e.target.value)}
-          />
-          <select
-            className="input"
-            style={{ width: '220px' }}
-            value={categoryFilter}
-            onChange={e => setCategoryFilter(e.target.value)}
-          >
-            <option value="">All Categories</option>
-            <optgroup label="Food">
-              {FOOD_CATEGORIES.map(cat => (
-                <option key={cat} value={cat}>{cat}</option>
-              ))}
-            </optgroup>
-            <optgroup label="Drinks">
-              {DRINK_CATEGORIES.map(cat => (
-                <option key={cat} value={cat}>{cat}</option>
-              ))}
-            </optgroup>
-          </select>
-        </div>
+            <div className="flex flex-col sm:flex-row gap-3 mb-4">
+              <input
+                type="text"
+                className="input flex-1"
+                placeholder="Search inventory..."
+                value={search}
+                onChange={e => setSearch(e.target.value)}
+              />
+              <select
+                className="input sm:w-[220px]"
+                value={categoryFilter}
+                onChange={e => setCategoryFilter(e.target.value)}
+              >
+                <option value="">All Categories</option>
+                <optgroup label="Food">
+                  {FOOD_CATEGORIES.map(cat => (
+                    <option key={cat} value={cat}>{cat}</option>
+                  ))}
+                </optgroup>
+                <optgroup label="Drinks">
+                  {DRINK_CATEGORIES.map(cat => (
+                    <option key={cat} value={cat}>{cat}</option>
+                  ))}
+                </optgroup>
+              </select>
+            </div>
 
         {/* Summary stats */}
         <div className="grid grid-cols-3 gap-3 mb-6">
@@ -725,9 +722,9 @@ export default function InventoryPage() {
         {loading ? (
           <p className="text-gray-500 text-sm">Loading inventory...</p>
         ) : (
-          <div className="card overflow-hidden flex flex-col" style={{ maxHeight: 'calc(100vh - 360px)' }}>
-            {/* Fixed Header */}
-            <table className="w-full text-sm flex-shrink-0">
+          <div className="card overflow-hidden flex flex-col" style={{ maxHeight: 'calc(100vh - 360px)', minHeight: '300px' }}>
+            {/* Fixed Header - Desktop Only */}
+            <table className="w-full text-sm flex-shrink-0 hidden md:table">
               <colgroup>
                 <col className="w-[25%]" /><col className="w-[18%]" /><col className="w-[12%]" />
                 <col className="w-[10%]" /><col className="w-[15%]" /><col className="w-[20%]" />
@@ -744,8 +741,8 @@ export default function InventoryPage() {
               </thead>
             </table>
 
-            {/* Scrollable Body */}
-            <div className="overflow-y-auto flex-1">
+            {/* Scrollable Body - Desktop Table */}
+            <div className="overflow-y-auto flex-1 hidden md:block">
               <table className="w-full text-sm">
                 <colgroup>
                   <col className="w-[25%]" /><col className="w-[18%]" /><col className="w-[12%]" />
@@ -818,6 +815,78 @@ export default function InventoryPage() {
                   ))}
                 </tbody>
               </table>
+            </div>
+
+            {/* Mobile Cards - Only visible on small screens */}
+            <div className="overflow-y-auto flex-1 md:hidden space-y-2 p-2">
+              {filtered.length === 0 ? (
+                <div className="p-8 text-center text-gray-600">No food items found.</div>
+              ) : filtered.map(food => (
+                <div key={food.id} className="bg-gray-900/50 border border-gray-800 rounded-lg p-3 space-y-2">
+                  {/* Header: Name & Price */}
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex-1 min-w-0">
+                      <p className="text-white font-medium text-sm truncate">{food.name}</p>
+                      <p className="text-gray-500 text-xs">{food.category}</p>
+                    </div>
+                    <span className="text-white font-semibold text-sm">₱{parseFloat(food.price).toFixed(0)}</span>
+                  </div>
+
+                  {/* Flavors if any */}
+                  {food.flavors && food.flavors.length > 0 && (
+                    <p className="text-gray-400 text-[10px] leading-tight">
+                      {food.flavors.map(f => `${f.flavor_name}: ₱${parseFloat(f.price).toFixed(0)}`).join(' · ')}
+                    </p>
+                  )}
+
+                  {/* Stock & Status row */}
+                  <div className="flex items-center justify-between pt-1 border-t border-gray-800">
+                    <div className="flex items-center gap-2">
+                      <span className="text-gray-500 text-xs">Stock:</span>
+                      {food.flavors && food.flavors.length > 0 ? (
+                        <span className="text-gray-400 text-xs">
+                          {food.flavors.reduce((sum, f) => sum + (f.available ?? f.stock ?? 0), 0)}
+                        </span>
+                      ) : (
+                        <span className={food.stock <= 5 ? 'text-orange-400 text-xs font-bold' : 'text-gray-300 text-xs'}>
+                          {food.stock}
+                        </span>
+                      )}
+                    </div>
+                    <button
+                      onClick={() => toggleAvailability(food)}
+                      className="scale-90"
+                    >
+                      {(() => {
+                        const effectiveStock = food.flavors && food.flavors.length > 0
+                          ? food.flavors.reduce((sum, f) => sum + (f.available ?? f.stock ?? 0), 0)
+                          : food.stock;
+                        return effectiveStock <= 0
+                          ? <span className="badge-outofstock">Out of Stock</span>
+                          : food.status === 'available'
+                          ? <span className="badge-available">Available</span>
+                          : <span className="badge-paused">Disabled</span>;
+                      })()}
+                    </button>
+                  </div>
+
+                  {/* Actions */}
+                  <div className="flex gap-2 pt-1">
+                    <button
+                      onClick={() => setModal(food)}
+                      className="flex-1 btn-outline py-1.5 text-xs"
+                    >
+                      Edit
+                    </button>
+                    <button
+                      onClick={() => setDeleteTarget(food)}
+                      className="flex-1 btn-danger py-1.5 text-xs"
+                    >
+                      Delete
+                    </button>
+                  </div>
+                </div>
+              ))}
             </div>
 
             {/* Fixed Footer */}
@@ -996,8 +1065,8 @@ export default function InventoryPage() {
         )}
 
         {/* Records Table */}
-        <div className="card p-6">
-          <div className="flex items-center justify-between mb-4">
+        <div className="card overflow-hidden">
+          <div className="p-4 border-b border-gray-800 flex items-center justify-between flex-wrap gap-2">
             <h3 className="text-lg font-bold text-white">Today's Records</h3>
             {filteredStockRecords.length > 0 && (
               <button
@@ -1010,36 +1079,98 @@ export default function InventoryPage() {
             )}
           </div>
           {stockLoading ? (
-            <p className="text-gray-500 text-sm">Loading...</p>
+            <p className="text-gray-500 text-sm p-4">Loading...</p>
           ) : filteredStockRecords.length === 0 ? (
-            <p className="text-gray-600 text-sm">No stock records for {selectedDate}.</p>
+            <p className="text-gray-600 text-sm p-4">No records for {selectedDate}.</p>
           ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead className="border-b border-gray-800">
-                  <tr>
-                    <th className="text-left py-3 text-gray-500 font-semibold text-xs uppercase">Food Item</th>
-                    <th className="text-left py-3 text-gray-500 font-semibold text-xs uppercase">Flavor</th>
-                    <th className="text-right py-3 text-gray-500 font-semibold text-xs uppercase">Added Stock</th>
-                    <th className="text-left py-3 text-gray-500 font-semibold text-xs uppercase">Category</th>
-                    <th className="text-left py-3 text-gray-500 font-semibold text-xs uppercase">Time</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filteredStockRecords.map((record) => (
-                    <tr key={record.id} className="border-b border-gray-900">
-                      <td className="py-3 text-white">{record.food_name}</td>
-                      <td className="py-3 text-gray-400">{record.flavor_name || '-'}</td>
-                      <td className="py-3 text-right text-green-400 font-semibold">+{record.added_stock}</td>
-                      <td className="py-3 text-gray-400">{record.category || '-'}</td>
-                      <td className="py-3 text-gray-500 text-xs">
-                        {new Date(record.created_at).toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit' })}
-                      </td>
+            <>
+              {/* Desktop Table */}
+              <div className="overflow-x-auto hidden md:block">
+                <table className="w-full text-sm">
+                  <thead className="border-b border-gray-800">
+                    <tr>
+                      <th className="text-left px-4 py-2.5 text-gray-500 font-semibold text-xs uppercase">Date</th>
+                      <th className="text-left px-4 py-2.5 text-gray-500 font-semibold text-xs uppercase">Food Item</th>
+                      <th className="text-left px-4 py-2.5 text-gray-500 font-semibold text-xs uppercase">Flavor</th>
+                      <th className="text-right px-4 py-2.5 text-gray-500 font-semibold text-xs uppercase">Added Stock</th>
+                      <th className="text-left px-4 py-2.5 text-gray-500 font-semibold text-xs uppercase">Time</th>
+                      <th className="text-center px-4 py-2.5 text-gray-500 font-semibold text-xs uppercase">Actions</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                  </thead>
+                  <tbody>
+                    {filteredStockRecords.map((record) => (
+                      <tr key={record.id} className="border-b border-gray-900">
+                        <td className="px-4 py-2.5 text-white">{record.stock_date}</td>
+                        <td className="px-4 py-2.5 text-white">{record.food_name}</td>
+                        <td className="px-4 py-2.5 text-gray-400">{record.flavor_name || '-'}</td>
+                        <td className="px-4 py-2.5 text-right text-green-400 font-semibold">+{record.added_stock}</td>
+                        <td className="px-4 py-2.5 text-gray-500 text-xs">
+                          {new Date(record.created_at).toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit' })}
+                        </td>
+                        <td className="px-4 py-2.5 text-center">
+                          <div className="flex items-center justify-center gap-2">
+                            <button
+                              onClick={() => handleStockEdit(record)}
+                              className="text-gray-400 hover:text-white text-xs"
+                            >
+                              Edit
+                            </button>
+                            <button
+                              onClick={() => setStockDeleteTarget(record)}
+                              className="text-gray-400 hover:text-red-400 text-xs"
+                            >
+                              Delete
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Mobile Cards */}
+              <div className="md:hidden space-y-2 p-2">
+                {filteredStockRecords.map((record) => (
+                  <div key={record.id} className="bg-gray-900/50 border border-gray-800 rounded-lg p-3 space-y-2">
+                    {/* Header: Food & Date */}
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex-1 min-w-0">
+                        <p className="text-white font-medium text-sm truncate">{record.food_name}</p>
+                        <p className="text-gray-500 text-xs">{record.stock_date}</p>
+                      </div>
+                      <span className="text-green-400 font-semibold text-sm">+{record.added_stock}</span>
+                    </div>
+
+                    {/* Flavor if any */}
+                    {record.flavor_name && (
+                      <p className="text-gray-400 text-xs">Flavor: {record.flavor_name}</p>
+                    )}
+
+                    {/* Time & Actions */}
+                    <div className="flex items-center justify-between pt-1 border-t border-gray-800">
+                      <span className="text-gray-500 text-xs">
+                        {new Date(record.created_at).toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit' })}
+                      </span>
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => handleStockEdit(record)}
+                          className="text-gray-400 hover:text-white text-xs"
+                        >
+                          Edit
+                        </button>
+                        <button
+                          onClick={() => setStockDeleteTarget(record)}
+                          className="text-gray-400 hover:text-red-400 text-xs"
+                        >
+                          Delete
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </>
           )}
         </div>
       </>
@@ -1049,38 +1180,40 @@ export default function InventoryPage() {
     {activeTab === 'stock-history' && (
       <>
         <div className="card p-6">
-          <div className="flex items-center justify-between mb-4">
-            <div className="flex items-center gap-4">
+          <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 mb-4">
+            <div className="flex flex-col sm:flex-row sm:items-center gap-3">
               <h3 className="text-lg font-bold text-white">Stock History</h3>
-              <div className="flex items-center gap-2 bg-gray-800 rounded-lg px-3 py-1.5 border border-gray-700">
-                <Calendar className="w-4 h-4 text-gray-400" />
-                <input
-                  type="date"
-                  value={historyDateFilter}
-                  onChange={(e) => setHistoryDateFilter(e.target.value)}
-                  className="bg-transparent text-white text-xs focus:outline-none"
-                />
-              </div>
-              <div className="flex gap-2">
-                <button
-                  onClick={() => setHistoryDateFilter(new Date().toISOString().split('T')[0])}
-                  className={`text-xs px-3 py-1.5 rounded-lg border transition-all ${historyDateFilter === new Date().toISOString().split('T')[0] ? 'bg-white text-black border-white' : 'border-gray-700 text-gray-400 hover:border-gray-500'}`}
-                >
-                  Today
-                </button>
-                <button
-                  onClick={() => setHistoryDateFilter('')}
-                  className={`text-xs px-3 py-1.5 rounded-lg border transition-all ${!historyDateFilter ? 'bg-white text-black border-white' : 'border-gray-700 text-gray-400 hover:border-gray-500'}`}
-                >
-                  All Time
-                </button>
+              <div className="flex items-center gap-2 flex-wrap">
+                <div className="flex items-center gap-2 bg-gray-800 rounded-lg px-3 py-1.5 border border-gray-700">
+                  <Calendar className="w-4 h-4 text-gray-400" />
+                  <input
+                    type="date"
+                    value={historyDateFilter}
+                    onChange={(e) => setHistoryDateFilter(e.target.value)}
+                    className="bg-transparent text-white text-xs focus:outline-none"
+                  />
+                </div>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => setHistoryDateFilter(new Date().toISOString().split('T')[0])}
+                    className={`text-xs px-3 py-1.5 rounded-lg border transition-all ${historyDateFilter === new Date().toISOString().split('T')[0] ? 'bg-white text-black border-white' : 'border-gray-700 text-gray-400 hover:border-gray-500'}`}
+                  >
+                    Today
+                  </button>
+                  <button
+                    onClick={() => setHistoryDateFilter('')}
+                    className={`text-xs px-3 py-1.5 rounded-lg border transition-all ${!historyDateFilter ? 'bg-white text-black border-white' : 'border-gray-700 text-gray-400 hover:border-gray-500'}`}
+                  >
+                    All Time
+                  </button>
+                </div>
               </div>
             </div>
             
             {filteredHistoryRecords.length > 0 && (
               <button
                 onClick={() => downloadStockReport(filteredHistoryRecords, `Stock History (${historyDateFilter || 'All Time'})`, `marboys-stock-history-${historyDateFilter || 'all'}.pdf`)}
-                className="flex items-center gap-2 text-xs px-3 py-1.5 bg-white text-black font-bold rounded-lg hover:bg-gray-200 transition-colors"
+                className="flex items-center justify-center gap-2 text-xs px-3 py-1.5 bg-white text-black font-bold rounded-lg hover:bg-gray-200 transition-colors sm:self-start lg:self-auto"
               >
                 <Download className="w-4 h-4" />
                 Download PDF
@@ -1088,53 +1221,98 @@ export default function InventoryPage() {
             )}
           </div>
           {stockLoading ? (
-            <p className="text-gray-500 text-sm">Loading...</p>
+            <p className="text-gray-500 text-sm p-4">Loading...</p>
           ) : filteredHistoryRecords.length === 0 ? (
-            <p className="text-gray-600 text-sm">No stock history {historyDateFilter ? 'for selected date' : 'yet'}.</p>
+            <p className="text-gray-600 text-sm p-4">No stock history {historyDateFilter ? 'for selected date' : 'yet'}.</p>
           ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead className="border-b border-gray-800">
-                  <tr>
-                    <th className="text-left py-3 text-gray-500 font-semibold text-xs uppercase">Date</th>
-                    <th className="text-left py-3 text-gray-500 font-semibold text-xs uppercase">Food Item</th>
-                    <th className="text-left py-3 text-gray-500 font-semibold text-xs uppercase">Flavor</th>
-                    <th className="text-right py-3 text-gray-500 font-semibold text-xs uppercase">Added Stock</th>
-                    <th className="text-left py-3 text-gray-500 font-semibold text-xs uppercase">Time</th>
-                    <th className="text-center py-3 text-gray-500 font-semibold text-xs uppercase">Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filteredHistoryRecords.map((record) => (
-                    <tr key={record.id} className="border-b border-gray-900">
-                      <td className="py-3 text-white">{record.stock_date}</td>
-                      <td className="py-3 text-white">{record.food_name}</td>
-                      <td className="py-3 text-gray-400">{record.flavor_name || '-'}</td>
-                      <td className="py-3 text-right text-green-400 font-semibold">+{record.added_stock}</td>
-                      <td className="py-3 text-gray-500 text-xs">
-                        {new Date(record.created_at).toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit' })}
-                      </td>
-                      <td className="py-3 text-center">
-                        <div className="flex items-center justify-center gap-2">
-                          <button
-                            onClick={() => handleStockEdit(record)}
-                            className="text-gray-400 hover:text-white text-xs"
-                          >
-                            Edit
-                          </button>
-                          <button
-                            onClick={() => setStockDeleteTarget(record)}
-                            className="text-gray-400 hover:text-red-400 text-xs"
-                          >
-                            Delete
-                          </button>
-                        </div>
-                      </td>
+            <>
+              {/* Desktop Table */}
+              <div className="overflow-x-auto hidden md:block">
+                <table className="w-full text-sm">
+                  <thead className="border-b border-gray-800">
+                    <tr>
+                      <th className="text-left px-4 py-3 text-gray-500 font-semibold text-xs uppercase">Date</th>
+                      <th className="text-left px-4 py-3 text-gray-500 font-semibold text-xs uppercase">Food Item</th>
+                      <th className="text-left px-4 py-3 text-gray-500 font-semibold text-xs uppercase">Flavor</th>
+                      <th className="text-right px-4 py-3 text-gray-500 font-semibold text-xs uppercase">Added Stock</th>
+                      <th className="text-left px-4 py-3 text-gray-500 font-semibold text-xs uppercase">Time</th>
+                      <th className="text-center px-4 py-3 text-gray-500 font-semibold text-xs uppercase">Actions</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                  </thead>
+                  <tbody>
+                    {filteredHistoryRecords.map((record) => (
+                      <tr key={record.id} className="border-b border-gray-900">
+                        <td className="px-4 py-3 text-white">{record.stock_date}</td>
+                        <td className="px-4 py-3 text-white">{record.food_name}</td>
+                        <td className="px-4 py-3 text-gray-400">{record.flavor_name || '-'}</td>
+                        <td className="px-4 py-3 text-right text-green-400 font-semibold">+{record.added_stock}</td>
+                        <td className="px-4 py-3 text-gray-500 text-xs">
+                          {new Date(record.created_at).toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit' })}
+                        </td>
+                        <td className="px-4 py-3 text-center">
+                          <div className="flex items-center justify-center gap-2">
+                            <button
+                              onClick={() => handleStockEdit(record)}
+                              className="text-gray-400 hover:text-white text-xs"
+                            >
+                              Edit
+                            </button>
+                            <button
+                              onClick={() => setStockDeleteTarget(record)}
+                              className="text-gray-400 hover:text-red-400 text-xs"
+                            >
+                              Delete
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Mobile Cards */}
+              <div className="md:hidden space-y-2 p-2">
+                {filteredHistoryRecords.map((record) => (
+                  <div key={record.id} className="bg-gray-900/50 border border-gray-800 rounded-lg p-3 space-y-2">
+                    {/* Header: Food & Date */}
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex-1 min-w-0">
+                        <p className="text-white font-medium text-sm truncate">{record.food_name}</p>
+                        <p className="text-gray-500 text-xs">{record.stock_date}</p>
+                      </div>
+                      <span className="text-green-400 font-semibold text-sm">+{record.added_stock}</span>
+                    </div>
+
+                    {/* Flavor if any */}
+                    {record.flavor_name && (
+                      <p className="text-gray-400 text-xs">Flavor: {record.flavor_name}</p>
+                    )}
+
+                    {/* Time & Actions */}
+                    <div className="flex items-center justify-between pt-1 border-t border-gray-800">
+                      <span className="text-gray-500 text-xs">
+                        {new Date(record.created_at).toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit' })}
+                      </span>
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => handleStockEdit(record)}
+                          className="text-gray-400 hover:text-white text-xs"
+                        >
+                          Edit
+                        </button>
+                        <button
+                          onClick={() => setStockDeleteTarget(record)}
+                          className="text-gray-400 hover:text-red-400 text-xs"
+                        >
+                          Delete
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </>
           )}
         </div>
       </>

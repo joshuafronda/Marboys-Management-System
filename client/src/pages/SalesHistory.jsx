@@ -36,7 +36,10 @@ export default function SalesHistory() {
     try {
       let q;
       if (dateFilter) {
-        q = query(collection(db, 'sales'), where('date', '==', dateFilter), orderBy('created_at', 'desc'));
+        // Filter by created_at date range (start of day to end of day in UTC)
+        const startDate = dateFilter + 'T00:00:00.000Z';
+        const endDate = dateFilter + 'T23:59:59.999Z';
+        q = query(collection(db, 'sales'), where('created_at', '>=', startDate), where('created_at', '<=', endDate), orderBy('created_at', 'desc'));
       } else {
         q = query(collection(db, 'sales'), orderBy('created_at', 'desc'));
       }
@@ -202,19 +205,19 @@ export default function SalesHistory() {
       <Layout>
       <div className="page-enter">
           {/* Header */}
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
+          <div className="responsive-header mb-4">
             <div>
-              <h1 className="text-2xl font-black text-white">Sales History</h1>
+              <h1 className="text-xl sm:text-2xl font-black text-white">Sales History</h1>
               <p className="text-gray-500 text-sm mt-1">
                 {sales.length} records · ₱{totalRevenue.toLocaleString('en-PH', { minimumFractionDigits: 2 })} total
               </p>
             </div>
 
-            <div className="flex gap-4 items-center">
+            <div className="flex flex-wrap gap-2 sm:gap-4 items-center">
               <input
                 id="date-filter"
                 type="date"
-                className="input max-w-[180px]"
+                className="input flex-1 min-w-[140px] max-w-[180px]"
                 value={dateFilter}
                 onChange={e => { setDateFilter(e.target.value); setPage(1); }}
                 max={todayStr}
@@ -222,7 +225,7 @@ export default function SalesHistory() {
               {user?.role === 'owner' && (
                 <button
                   onClick={() => { setShowPwSetup(true); setNewPw(''); setConfirmPw(''); setPwError(''); }}
-                  className="btn-primary px-5 py-2"
+                  className="btn-primary px-4 py-2 text-sm"
                 >
                   {voidPwSet ? 'Password' : 'Set Void Password'}
                 </button>
@@ -253,7 +256,7 @@ export default function SalesHistory() {
               <p className="text-gray-600">No sales records found.</p>
             </div>
           ) : (
-            <div className="card overflow-hidden flex flex-col" style={{ maxHeight: 'calc(100vh - 220px)' }}>
+            <div className="card overflow-hidden flex flex-col" style={{ maxHeight: 'calc(100vh - 240px)', minHeight: '300px' }}>
               {/* Fixed Header */}
               <table className="w-full text-sm flex-shrink-0">
                 <colgroup>

@@ -248,8 +248,8 @@ export default function AdminDashboard() {
   return (
     <Layout>
       <div className="page-enter">
-        <div className="mb-8">
-          <h1 className="text-2xl font-black text-white">Admin Dashboard</h1>
+        <div className="mb-6">
+          <h1 className="text-xl sm:text-2xl font-black text-white">Admin Dashboard</h1>
           <p className="text-gray-500 text-sm mt-1">{formattedDate}</p>
         </div>
 
@@ -257,7 +257,7 @@ export default function AdminDashboard() {
           <div className="text-gray-500 text-sm">Loading...</div>
         ) : (
           <>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 mb-8">
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 mb-6">
               <StatCard
                 label="Total Sales Today"
                 value={`₱${todayTotal.toLocaleString('en-PH', { minimumFractionDigits: 2 })}`}
@@ -287,7 +287,7 @@ export default function AdminDashboard() {
             </div>
 
             {/* Quick Actions */}
-            <div className="grid grid-cols-2 gap-4 mb-8">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
               <button
                 onClick={() => navigate('/admin/tables')}
                 className="card p-6 text-left hover:border-gray-600 transition-colors cursor-pointer"
@@ -449,17 +449,17 @@ export default function AdminDashboard() {
             )}
 
             {/* Detailed Transactions Table */}
-            <div className="card p-6 flex flex-col" style={{ maxHeight: '600px' }}>
-              <div className="flex items-center justify-between mb-4 flex-shrink-0">
-                <div className="flex items-center gap-4">
+            <div className="card p-4 sm:p-6 flex flex-col" style={{ maxHeight: '600px' }}>
+              <div className="responsive-header mb-4 flex-shrink-0 gap-3">
+                <div className="flex flex-wrap items-center gap-2">
                   <h2 className="text-sm font-bold text-white uppercase tracking-wider">Transactions</h2>
                   <div className="flex items-center gap-2 bg-gray-800 rounded-lg px-3 py-1.5 border border-gray-700">
-                    <Calendar className="w-4 h-4 text-gray-400" />
+                    <Calendar className="w-4 h-4 text-gray-400 flex-shrink-0" />
                     <input
                       type="date"
                       value={dateFilter}
                       onChange={(e) => setDateFilter(e.target.value)}
-                      className="bg-transparent text-white text-xs focus:outline-none"
+                      className="bg-transparent text-white text-xs focus:outline-none w-[130px]"
                     />
                   </div>
                   {/* Quick filter buttons */}
@@ -481,7 +481,7 @@ export default function AdminDashboard() {
                 {todaySales.length > 0 && (
                   <button
                     onClick={downloadTodaySales}
-                    className="flex items-center gap-2 text-xs px-3 py-1.5 bg-white text-black font-bold rounded-lg hover:bg-gray-200 transition-colors"
+                    className="flex items-center gap-2 text-xs px-3 py-1.5 bg-white text-black font-bold rounded-lg hover:bg-gray-200 transition-colors flex-shrink-0"
                   >
                     <Download className="w-4 h-4" />
                     Download PDF

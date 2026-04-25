@@ -369,22 +369,20 @@ export default function POSPage() {
           </div>
         </div>
 
-        <div className="flex flex-col lg:flex-row gap-4" style={{ height: 'calc(100vh - 140px)' }}>
+        <div className="flex flex-col lg:flex-row gap-4 lg:h-[calc(100vh-140px)]">
           {/* Food Grid */}
           <div className="flex-1 flex flex-col min-h-0">
-            {/* Search + Category Dropdown - Fixed */}
-            <div className="flex gap-3 mb-4 flex-shrink-0">
+            {/* Search + Category Dropdown */}
+            <div className="flex flex-col sm:flex-row gap-2 sm:gap-3 mb-3 flex-shrink-0">
               <input
                 type="text"
-                className="input"
-                style={{ flex: 1 }}
+                className="input flex-1"
                 placeholder="Search food items..."
                 value={search}
                 onChange={e => setSearch(e.target.value)}
               />
               <select
-                className="input"
-                style={{ width: '220px' }}
+                className="input sm:w-[200px] lg:w-[220px]"
                 value={categoryFilter}
                 onChange={e => setCategoryFilter(e.target.value)}
               >
@@ -402,7 +400,7 @@ export default function POSPage() {
               </select>
             </div>
 
-            <div className="card border border-gray-800 flex-1 flex flex-col overflow-hidden min-h-0">
+            <div className="card border border-gray-800 flex-1 flex flex-col overflow-hidden min-h-0" style={{ minHeight: '280px' }}>
               {loading ? (
                 <div className="flex-1 flex items-center justify-center">
                   <p className="text-gray-500 text-sm">Loading menu...</p>
@@ -412,7 +410,7 @@ export default function POSPage() {
                   <p className="text-gray-600 text-sm">No available items.</p>
                 </div>
               ) : (
-                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 gap-2 content-start overflow-y-auto flex-1 p-3">
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-2 content-start overflow-y-auto flex-1 p-3">
                   {availableFoods.map(food => (
                       <button
                         key={food.id}
@@ -441,7 +439,7 @@ export default function POSPage() {
           </div>
 
           {/* Cart */}
-          <div className="w-full lg:w-80 xl:w-96 flex flex-col lg:sticky lg:top-20 lg:self-start lg:max-h-[calc(100vh-140px)]">
+          <div className="w-full lg:w-80 xl:w-96 flex flex-col lg:sticky lg:top-20 lg:self-start lg:max-h-[calc(100vh-140px)] flex-shrink-0">
             <div className="card p-4 flex-1 flex flex-col overflow-hidden">
               {/* Cart Header */}
               <div className="flex-shrink-0 border-b border-gray-800 pb-3 mb-2">
